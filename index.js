@@ -3,6 +3,7 @@ const app = express();
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const mysql = require("mysql");
+const { NULL } = require("mysql/lib/protocol/constants/types");
 require("dotenv").config();
 
 const db = mysql.createPool({
@@ -60,6 +61,36 @@ app.post("/register", (req, res) => {
           }
         }
       );
+    }
+  });
+});
+
+app.post("/login", (req, res) => {
+  const e_mail = req.body.e_mail;
+
+  const sqlSelect = "SELECT * FROM users WHERE e_mail = ?";
+
+  db.query(sqlSelect, [e_mail], (err, result) => {
+    if (err) {
+      res.send({
+        feedback: "database_error",
+        password: NULL,
+      });
+      return;
+    } else {
+      if (result[0]) {
+        res.send({
+          feedback: "user_found",
+          password: result[0].password,
+        });
+        return;
+      } else {
+        res.send({
+          feedback: "user_not_found",
+          password: NULL,
+        });
+        return;
+      }
     }
   });
 });
