@@ -1,0 +1,27 @@
+{
+  "name": "cropool.api",
+  "version": "1.0.0",
+  "description": "API for cropool Android application.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ivancrg/cropool.api.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ivancrg/cropool.api/issues"
+  },
+  "homepage": "https://github.com/ivancrg/cropool.api#readme",
+  "dependencies": {
+    "body-parser": "^1.20.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.17.3",
+    "mysql": "^2.18.1"
+  }
+}
