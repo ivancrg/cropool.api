@@ -163,7 +163,7 @@ app.patch("/logout", (req, res) => {
     (err, result) => {
       if (err) {
         // Database error, response: feedback + HTTP500
-        console.log(err);
+        
         res.status(500).send({
           feedback: process.env.FEEDBACK_DATABASE_ERROR,
         });

@@ -12,48 +12,6 @@ const db = mysql.createPool({
   multipleStatements: true,
 });
 
-function insertJWTToDB(token, email) {
-  const sqlSelect = "SELECT iduser FROM user WHERE e_mail = ?";
-
-  db.query(sqlSelect, [email], (err, result) => {
-    if (err) {
-      // Database error, return database error feedback
-      // console.log(err);
-      //   return process.env.FEEDBACK_DB_ERROR;
-    } else if (result[0]) {
-      // User found, try to insert token to token table
-
-      const sqlInsert =
-        "INSERT INTO token (refresh_token, iduser) VALUES (?, ?)";
-
-      db.query(sqlInsert, [token, result[0].iduser], (err, result) => {
-        if (err) {
-          // Database error, return database error feedback
-          console.log("INSERTING TOKEN ERROR");
-          console.log(err);
-          //   return process.env.FEEDBACK_DB_ERROR.toString();
-        } else {
-          // Token inserted to token table
-          //   return process.env.FEEDBACK_TOKEN_INSERTED;
-        }
-      });
-
-      // MULTIPLE HASHES MATCH MULTIPLE TOKENS
-      //   bcrypt.hash(token, saltRounds, function (err, hash) {
-      //     if (err) {
-      //       // PASSWORD NOT HASHED
-      //       console.log("TOKEN HASHING ERROR");
-      //     } else {
-      //       // INSERT HASHED TOKEN INTO DB
-      //     }
-      //   });
-    } else {
-      // User with given email not found
-      //   return process.env.FEEDBACK_USER_NOT_FOUND_TOKEN_NOT_INSERTED;
-    }
-  });
-}
-
 function generateAccessJWT(email) {
   return jwt.sign({ e_mail: email }, process.env.ACCESS_TOKEN_SECRET, {
     expiresIn: "10m",
@@ -138,5 +96,4 @@ module.exports = {
   generateRefreshJWT,
   authenticateAccessToken,
   authenticateRefreshToken,
-  insertJWTToDB,
 };
