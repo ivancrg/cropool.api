@@ -54,11 +54,19 @@ app.post("/register", (req, res) => {
       // User not found, no error in sqlSelect query
 
       const sqlInsert =
-        "INSERT INTO user (first_name, last_name, e_mail, password) VALUES (?, ?, ?, ?)";
+        "INSERT INTO user (first_name, last_name, e_mail, password, created_on, last_logout) VALUES (?, ?, ?, ?, ?, ?)";
+      currentTimeSeconds = Math.round(Date.now() / 1000);
 
       db.query(
         sqlInsert,
-        [first_name, last_name, e_mail, password_hash],
+        [
+          first_name,
+          last_name,
+          e_mail,
+          password_hash,
+          currentTimeSeconds,
+          currentTimeSeconds,
+        ],
         (err, result) => {
           if (err) {
             // Database error, response: feedback + HTTP500
@@ -71,12 +79,9 @@ app.post("/register", (req, res) => {
           } else {
             // User created, response: access_token, refresh_token, feedback + HTTP201
 
-            refTkn = tokenMgmt.generateRefreshJWT(e_mail);
-            tokenMgmt.insertJWTToDB(refTkn, e_mail);
-
             res
               .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
-              .setHeader("refresh_token", refTkn)
+              .setHeader("refresh_token", tokenMgmt.generateRefreshJWT(e_mail))
               .status(201)
               .send({
                 feedback: process.env.FEEDBACK_USER_REGISTERED,
@@ -116,12 +121,10 @@ app.post("/login", (req, res) => {
             });
           } else if (result == true) {
             // Passwords match, user found, response: access_token, refresh_token, feedback + HTTP201
-            refTkn = tokenMgmt.generateRefreshJWT(e_mail);
-            tokenMgmt.insertJWTToDB(refTkn, e_mail);
 
             res
               .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
-              .setHeader("refresh_token", refTkn)
+              .setHeader("refresh_token", tokenMgmt.generateRefreshJWT(e_mail))
               .status(201)
               .send({
                 feedback: process.env.FEEDBACK_USER_FOUND,
@@ -149,57 +152,32 @@ app.post("/login", (req, res) => {
   });
 });
 
-app.post("/logout", (req, res) => {
+app.patch("/logout", (req, res) => {
   const e_mail = req.body.e_mail;
 
-  const sqlSelect = "SELECT iduser FROM user WHERE e_mail = ?";
+  const sqlUpdate = "UPDATE user SET last_logout = ? WHERE e_mail = ?";
 
-  db.query(sqlSelect, [e_mail], (err, result) => {
-    if (err) {
-      // Database error, response: feedback + HTTP500
+  db.query(
+    sqlUpdate,
+    [Math.round(Date.now() / 1000), e_mail],
+    (err, result) => {
+      if (err) {
+        // Database error, response: feedback + HTTP500
+        console.log(err);
+        res.status(500).send({
+          feedback: process.env.FEEDBACK_DATABASE_ERROR,
+        });
 
-      res.status(500).send({
-        feedback: process.env.FEEDBACK_DATABASE_ERROR,
-      });
+        return;
+      } else {
+        // User logged out, user's last logout time updated, response: feedback + HTTP201
 
-      return;
-    } else if (result[0]) {
-      // User with provided e-mail found
-      userID = result[0].iduser;
-
-      const sqlDelete = "DELETE FROM token WHERE iduser = ?";
-
-      db.query(sqlDelete, [userID], (err, result) => {
-        if (err) {
-          // Database error, response: feedback + HTTP500
-
-          res.status(500).send({
-            feedback: process.env.FEEDBACK_DATABASE_ERROR,
-          });
-
-          return;
-        } else {
-          // User logged out, all user's refresh tokens deleted, response: feedback + HTTP201
-
-          res.status(201).send({
-            feedback: process.env.FEEDBACK_USER_LOGGED_OUT,
-          });
-
-          return;
-        }
-      });
-
-      return;
-    } else {
-      // User not found, response: feedback + HTTP404
-
-      res.status(404).send({
-        feedback: process.env.FEEDBACK_USER_NOT_FOUND,
-      });
-
-      return;
+        res.status(201).send({
+          feedback: process.env.FEEDBACK_USER_LOGGED_OUT,
+        });
+      }
     }
-  });
+  );
 });
 
 app.get("/accessToken", tokenMgmt.authenticateRefreshToken, (req, res) => {

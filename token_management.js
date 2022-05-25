@@ -88,8 +88,8 @@ function authenticateAccessToken(req, res, next) {
 
 function authenticateRefreshToken(req, res, next) {
   // Function that authenticates the refresh token that was provided
-  // The function also checks whether the token is active (present in token table)
-  // (If the user has logged out, all of his refresh tokens were deleted)
+  // The function also checks whether the token is active (issued after last logout timestamp)
+  // (If the user has logged out, all of his refresh tokens were invalidated)
 
   const refreshHeader = req.headers["refresh_token"];
   const token = refreshHeader && refreshHeader.split(" ")[1];
@@ -101,87 +101,33 @@ function authenticateRefreshToken(req, res, next) {
     // Token invalid (it was modified), response: HTTP403
     if (err) return res.sendStatus(403);
 
-    // Token VALID, communication with user 'user'
-    // Check if the token is active and forward 'user' with next() if it is
-    req.user = user;
+    // Token VALID, it was issued to user 'user.e_mail'
 
-    const sqlSelect = "SELECT iduser FROM user WHERE e_mail = ?";
+    // Validating token issued-at-wise
+    const sqlSelect = "SELECT created_at, last_logout FROM user WHERE e_mail = ?";
 
     db.query(sqlSelect, [user.e_mail], (err, result) => {
       if (err) {
         // Database error, return database error feedback
-
+        console.log(err)
         return res.status(500).send({
           feedback: process.env.FEEDBACK_DATABASE_ERROR,
         });
       } else if (result[0]) {
-        // User found, check if the token is in token table
+        // User found, check if the token is valid
 
-        const sqlSelect = "SELECT refresh_token FROM token WHERE iduser = ?";
+        if (result[0].last_logout < user.iat && result[0].created_at < user.iat) {
+          // Token issued after last logout and after user creation
 
-        db.query(sqlSelect, [result[0].iduser], (err, result) => {
-          if (err) {
-            // Database error, return database error feedback
+          req.user = user;
+          next();
+        } else {
+          // Token issued before last logout - therefore invalid
 
-            return res.status(500).send({
-              feedback: process.env.FEEDBACK_DATABASE_ERROR,
-            });
-          } else if (result[0]) {
-            // Tokens of token's user found
-
-            for (i = 0; i < result.length; ++i) {
-              if (token == result[i].refresh_token) {
-                req.user = user;
-                next();
-                break;
-              } else if (i == result.length - 1) {
-                // console.log("NO ACTIVE TOKENS");
-                // Token inactive (it was deleted during logout), response: HTTP403
-                return res.status(403).send({
-                  feedback: process.env.TOKEN_INACTIVE,
-                });
-              }
-            }
-
-            // MULTIPLE HASHES MATCH MULTIPLE TOKENS
-            // result.forEach((r, index) => {
-            //   bcrypt.compare(token, r.refresh_token, (err, result) => {
-            //     if (err) {
-            //       return res.status(500).send({
-            //         feedback: process.env.TOKEN_VALIDATION_ERROR,
-            //       });
-            //     } else if (result == true) {
-            //       // Found hashed token in DB that corresponds to header's token
-            //       req.user = user;
-
-            //       console.log(r.refresh_token);
-            //       next();
-
-            //       return;
-            //     } else if (result == false && index == result.length - 1) {
-            //       console.log("NO ACTIVE TOKENS");
-            //       // Token inactive (it was deleted during logout), response: HTTP403
-            //       return res.status(403).send({
-            //         feedback: process.env.TOKEN_INACTIVE,
-            //       });
-            //     }
-            //   });
-            // });
-          } else {
-            // console.log("NO TOKENS");
-            // Token inactive (it was deleted during logout), response: HTTP403
-
-            return res.status(403).send({
-              feedback: process.env.TOKEN_NO_TOKENS,
-            });
-          }
-        });
-      } else {
-        // User with given email not found
-
-        return res.status(404).send({
-          feedback: process.env.FEEDBACK_USER_NOT_FOUND,
-        });
+          return res.status(403).send({
+            feedback: process.env.TOKEN_INACTIVE,
+          });
+        }
       }
     });
   });
