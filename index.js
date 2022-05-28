@@ -40,6 +40,8 @@ app.post("/register", (req, res) => {
       res.status(500).send({
         feedback: process.env.FEEDBACK_DATABASE_ERROR,
       });
+      
+      console.log(err);
 
       return;
     } else if (result[0]) {
@@ -54,7 +56,7 @@ app.post("/register", (req, res) => {
       // User not found, no error in sqlSelect query
 
       const sqlInsert =
-        "INSERT INTO user (first_name, last_name, e_mail, password, created_on, last_logout) VALUES (?, ?, ?, ?, ?, ?)";
+        "INSERT INTO user (first_name, last_name, e_mail, password, created_at, last_logout) VALUES (?, ?, ?, ?, ?, ?)";
       currentTimeSeconds = Math.round(Date.now() / 1000);
 
       db.query(
@@ -74,6 +76,8 @@ app.post("/register", (req, res) => {
             res.status(500).send({
               feedback: process.env.FEEDBACK_DATABASE_ERROR,
             });
+
+            console.log(err);
 
             return;
           } else {
