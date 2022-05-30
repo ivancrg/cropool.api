@@ -40,7 +40,7 @@ app.post("/register", (req, res) => {
       res.status(500).send({
         feedback: process.env.FEEDBACK_DATABASE_ERROR,
       });
-      
+
       console.log(err);
 
       return;
@@ -81,15 +81,21 @@ app.post("/register", (req, res) => {
 
             return;
           } else {
-            // User created, response: access_token, refresh_token, feedback + HTTP201
+            // User created, response: access_token, refresh_token, firebase_token, feedback + HTTP201
 
-            res
-              .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
-              .setHeader("refresh_token", tokenMgmt.generateRefreshJWT(e_mail))
-              .status(201)
-              .send({
-                feedback: process.env.FEEDBACK_USER_REGISTERED,
-              });
+            tokenMgmt.generateFirebaseJWT(e_mail, (firebaseToken) => {
+              res
+                .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
+                .setHeader(
+                  "refresh_token",
+                  tokenMgmt.generateRefreshJWT(e_mail)
+                )
+                .setHeader("firebase_token", firebaseToken)
+                .status(201)
+                .send({
+                  feedback: process.env.FEEDBACK_USER_REGISTERED,
+                });
+            });
 
             return;
           }
@@ -120,19 +126,26 @@ app.post("/login", (req, res) => {
 
         bcrypt.compare(password, result[0].password, function (err, result) {
           if (err) {
+            console.log(err);
             res.status(500).send({
               feedback: process.env.FEEDBACK_DATABASE_ERROR,
             });
           } else if (result == true) {
-            // Passwords match, user found, response: access_token, refresh_token, feedback + HTTP201
+            // Passwords match, user found, response: access_token, refresh_token, firebase_token, feedback + HTTP201
 
-            res
-              .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
-              .setHeader("refresh_token", tokenMgmt.generateRefreshJWT(e_mail))
-              .status(201)
-              .send({
-                feedback: process.env.FEEDBACK_USER_FOUND,
-              });
+            tokenMgmt.generateFirebaseJWT(e_mail, (firebaseToken) => {
+              res
+                .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
+                .setHeader(
+                  "refresh_token",
+                  tokenMgmt.generateRefreshJWT(e_mail)
+                )
+                .setHeader("firebase_token", firebaseToken)
+                .status(201)
+                .send({
+                  feedback: process.env.FEEDBACK_USER_FOUND,
+                });
+            });
           } else {
             // Passwords do not match, user found, response: feedback + HTTP403
 
@@ -167,7 +180,7 @@ app.patch("/logout", (req, res) => {
     (err, result) => {
       if (err) {
         // Database error, response: feedback + HTTP500
-        
+
         res.status(500).send({
           feedback: process.env.FEEDBACK_DATABASE_ERROR,
         });

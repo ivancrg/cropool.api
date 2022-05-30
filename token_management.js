@@ -3,6 +3,12 @@ const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const mysql = require("mysql");
 require("dotenv").config();
+var admin = require("firebase-admin");
+
+var serviceAccount = require(process.env.FIREBASE_JSON_KEY_LOCATION);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -22,6 +28,18 @@ function generateRefreshJWT(email) {
   return jwt.sign({ e_mail: email }, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: "7d",
   });
+}
+
+function generateFirebaseJWT(email, callback) {
+  admin
+    .auth()
+    .createCustomToken(email)
+    .then((customToken) => {
+      callback(customToken);
+    })
+    .catch((err) => {
+      console.log("Error creating custom token: ", err);
+    });
 }
 
 function authenticateAccessToken(req, res, next) {
@@ -62,19 +80,23 @@ function authenticateRefreshToken(req, res, next) {
     // Token VALID, it was issued to user 'user.e_mail'
 
     // Validating token issued-at-wise
-    const sqlSelect = "SELECT created_at, last_logout FROM user WHERE e_mail = ?";
+    const sqlSelect =
+      "SELECT created_at, last_logout FROM user WHERE e_mail = ?";
 
     db.query(sqlSelect, [user.e_mail], (err, result) => {
       if (err) {
         // Database error, return database error feedback
-        console.log(err)
+        console.log(err);
         return res.status(500).send({
           feedback: process.env.FEEDBACK_DATABASE_ERROR,
         });
       } else if (result[0]) {
         // User found, check if the token is valid
 
-        if (result[0].last_logout < user.iat && result[0].created_at < user.iat) {
+        if (
+          result[0].last_logout < user.iat &&
+          result[0].created_at < user.iat
+        ) {
           // Token issued after last logout and after user creation
 
           req.user = user;
@@ -96,4 +118,5 @@ module.exports = {
   generateRefreshJWT,
   authenticateAccessToken,
   authenticateRefreshToken,
+  generateFirebaseJWT,
 };

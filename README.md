@@ -19,7 +19,7 @@ POST. Expects JSON object with `first_name`, `last_name`, `e_mail`, hashed `pass
         * If a user with the wanted e-mail address already exists: send response with HTTP 409 status and feedback string
         * If the wanted e-mail address isn't used by anyone: try to insert the new user specified by JSON object to the database:
             * On error: send response with HTTP 500 status and feedback string
-            * On success: send response with HTTP 201 status, feedback string and header that includes access and refresh JWT tokens generated using [`generateAccessJWT`](#generate-access-token) and [`generateRefreshJWT`](#generate-refresh-token)
+            * On success: send response with HTTP 201 status, feedback string and header that includes access and refresh JWT tokens generated using [`generateAccessJWT`](#generate-access-token), [`generateRefreshJWT`](#generate-refresh-token) and [`generateFirebaseJWT`](#generate-firebase-token)
 
 ### Login
 
@@ -33,7 +33,7 @@ POST. Expects JSON object with `e_mail` and `password` objects. Short descriptio
         * If a user with the wanted e-mail address exists: try to compare provided `password` with database's hashed password:
         * On error: send response with HTTP 500 status and feedback string
         * On success:
-            * If the passwords match: send response with HTTP 201 status, feedback string and header that includes access and refresh JWT tokens generated using [`generateAccessJWT`](#generate-access-token) and [`generateRefreshJWT`](#generate-refresh-token)
+            * If the passwords match: send response with HTTP 201 status, feedback string and header that includes access and refresh JWT tokens generated using [`generateAccessJWT`](#generate-access-token), [`generateRefreshJWT`](#generate-refresh-token) and [`generateFirebaseJWT`](#generate-firebase-token)
             * If the passwords don't match: send response with HTTP 403 status and feedback string
 
 ### Logout
@@ -70,6 +70,11 @@ Generates access JWT that will belong to user with e-mail address `email` and wi
 #### `generateRefreshJWT(email)`
 Generates refresh JWT that will belong to user with e-mail address `email` and will expire in 7 days.
 
+### Generate Firebase token
+
+#### `generateFirebaseJWT(email, callback)`
+Generates Firebase JWT that will belong to user with e-mail address `email` and will be used to authenticate with Firebase service.
+
 ### Authenticate access token
 
 #### `authenticateAccessToken(req, res, next)`
@@ -90,4 +95,4 @@ Expects a refresh JWT in request's `refresh_token` header (format "Bearer \<toke
         * If the token isn't valid: send response with HTTP 403 status
         * If the token is valid: check whether the token was issued after user's creation timestamp and user's last logout timestamp:
             * If the token was created before any of the mentioned timestamps: send response with HTTP 403 status and feedback string
-            * IF the token was created after both of the mentioned timestamps:  forward `user` identified in token with `next()`
+            * If the token was created after both of the mentioned timestamps:  forward `user` identified in token with `next()`
