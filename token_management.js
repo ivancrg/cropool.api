@@ -30,6 +30,26 @@ function generateRefreshJWT(email) {
   });
 }
 
+function registerUserGenerateFirebaseJWT(email, displayName, callback) {
+  admin
+    .auth()
+    .createUser({ uid: email, email: email, displayName: displayName })
+    .then((userRecord) => {
+      admin
+        .auth()
+        .createCustomToken(email)
+        .then((customToken) => {
+          callback(customToken);
+        })
+        .catch((err) => {
+          console.log("Error creating custom token: ", err);
+        });
+    })
+    .catch((err) => {
+      console.log("Error creating a new user: ", err);
+    });
+}
+
 function generateFirebaseJWT(email, callback) {
   admin
     .auth()
@@ -116,7 +136,8 @@ function authenticateRefreshToken(req, res, next) {
 module.exports = {
   generateAccessJWT,
   generateRefreshJWT,
+  registerUserGenerateFirebaseJWT,
+  generateFirebaseJWT,
   authenticateAccessToken,
   authenticateRefreshToken,
-  generateFirebaseJWT,
 };

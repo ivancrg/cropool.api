@@ -83,7 +83,7 @@ app.post("/register", (req, res) => {
           } else {
             // User created, response: access_token, refresh_token, firebase_token, feedback + HTTP201
 
-            tokenMgmt.generateFirebaseJWT(e_mail, (firebaseToken) => {
+            tokenMgmt.registerUserGenerateFirebaseJWT(e_mail, (first_name + " " + last_name), (firebaseToken) => {
               res
                 .setHeader("access_token", tokenMgmt.generateAccessJWT(e_mail))
                 .setHeader(
