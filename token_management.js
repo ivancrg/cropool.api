@@ -8,6 +8,7 @@ var admin = require("firebase-admin");
 var serviceAccount = require(process.env.FIREBASE_JSON_KEY_LOCATION);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
+  databaseURL: process.env.FB_RTDB_URL,
 });
 
 const db = mysql.createPool({
@@ -20,7 +21,7 @@ const db = mysql.createPool({
 
 function generateAccessJWT(email) {
   return jwt.sign({ e_mail: email }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: "10m",
+    expiresIn: "5m",
   });
 }
 
@@ -30,14 +31,18 @@ function generateRefreshJWT(email) {
   });
 }
 
-function registerUserGenerateFirebaseJWT(email, displayName, callback) {
+function registerUserGenerateFirebaseJWT(iduser, email, displayName, callback) {
   admin
     .auth()
-    .createUser({ uid: email, email: email, displayName: displayName })
+    .createUser({
+      uid: iduser.toString(),
+      email: email,
+      displayName: displayName,
+    })
     .then((userRecord) => {
       admin
         .auth()
-        .createCustomToken(email)
+        .createCustomToken(iduser.toString())
         .then((customToken) => {
           callback(customToken);
         })
@@ -50,10 +55,10 @@ function registerUserGenerateFirebaseJWT(email, displayName, callback) {
     });
 }
 
-function generateFirebaseJWT(email, callback) {
+function generateFirebaseJWT(iduser, callback) {
   admin
     .auth()
-    .createCustomToken(email)
+    .createCustomToken(iduser.toString())
     .then((customToken) => {
       callback(customToken);
     })
@@ -133,6 +138,70 @@ function authenticateRefreshToken(req, res, next) {
   });
 }
 
+function authenticateFirebaseToken(req, res, next) {
+  // Function that authenticates the token that was provided
+  // If the token is invalid, it returns
+
+  const accessHeader = req.headers["firebase_token"];
+  const token = accessHeader && accessHeader.split(" ")[1];
+
+  // No token provided, reponse HTTP401
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(
+    token,
+    serviceAccount.private_key,
+    {
+      algorithms: ["RS256"],
+    },
+    (errJWT, fbuser) => {
+      // Token invalid (it was modified), response: HTTP403
+      if (errJWT) {
+        console.log(errJWT);
+        return res.sendStatus(403);
+      }
+
+      // Token VALID, it was issued to user 'user.uid'
+
+      // Validating token issued-at-wise
+      const sqlSelect =
+        "SELECT iduser, created_at, last_logout FROM user WHERE e_mail = ?";
+
+      db.query(sqlSelect, [req.user.e_mail], (err, result) => {
+        if (err) {
+          // Database error, return database error feedback
+          console.log(err);
+          return res.status(500).send({
+            feedback: process.env.FEEDBACK_DATABASE_ERROR,
+          });
+        } else if (result[0]) {
+          // User found, check if the token is valid
+
+          if (result[0].iduser != fbuser.uid) {
+            // Firebase token does not belong to the user with access token
+            return res.status(403).send({
+              feedback: process.env.TOKEN_INVALID,
+            });
+          } else if (
+            result[0].last_logout < fbuser.iat &&
+            result[0].created_at < fbuser.iat
+          ) {
+            // Token issued after last logout and after user creation
+
+            req.user.uid = fbuser.uid;
+            next();
+          } else {
+            // Token issued before last logout - therefore invalid
+            return res.status(403).send({
+              feedback: process.env.TOKEN_INACTIVE,
+            });
+          }
+        }
+      });
+    }
+  );
+}
+
 module.exports = {
   generateAccessJWT,
   generateRefreshJWT,
@@ -140,4 +209,5 @@ module.exports = {
   generateFirebaseJWT,
   authenticateAccessToken,
   authenticateRefreshToken,
+  authenticateFirebaseToken,
 };
