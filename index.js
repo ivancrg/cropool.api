@@ -298,7 +298,7 @@ app.patch(
   tokenMgmt.authenticateFirebaseToken,
   (req, res) => {
     const first_name = req.body.first_name;
-    const last_name = req.body.first_name;
+    const last_name = req.body.last_name;
     const profile_picture = req.body.profile_picture;
 
     var sqlUpdate = "";
