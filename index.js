@@ -295,8 +295,8 @@ app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
   });
 });
 
-app.patch("/logout", (req, res) => {
-  const e_mail = req.body.e_mail;
+app.patch("/logout", tokenMgmt.authenticateAccessToken, (req, res) => {
+  const e_mail = req.user.e_mail;
 
   const sqlUpdate = "UPDATE user SET last_logout = ? WHERE e_mail = ?";
 
