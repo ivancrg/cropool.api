@@ -191,6 +191,110 @@ app.post("/login", (req, res) => {
   });
 });
 
+app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
+  const currentPassword = req.body.current_password;
+  const newPassword = req.body.new_password;
+  const logoutRequired = req.body.logout_required;
+
+  const sqlSelect = "SELECT password FROM user WHERE e_mail = ?";
+
+  db.query(sqlSelect, [req.user.e_mail], (err, resultSelect) => {
+    if (err) {
+      // Database error, response: feedback + HTTP500
+
+      res.status(500).send({
+        feedback: process.env.FEEDBACK_DATABASE_ERROR,
+      });
+
+      return;
+    } else {
+      if (resultSelect[0]) {
+        // User with provided e-mail found
+
+        bcrypt.compare(
+          currentPassword,
+          resultSelect[0].password,
+          function (err, result) {
+            if (err) {
+              console.log(err);
+              res.status(500).send({
+                feedback: process.env.FEEDBACK_DATABASE_ERROR,
+              });
+            } else if (result == true) {
+              // Passwords match, user found, can try to change password
+
+              // Update request depends on logout option
+              var sqlUpdatePassword, sqlUpdateArray;
+
+              if (
+                logoutRequired != null &&
+                (logoutRequired == true ||
+                  logoutRequired.toString() == "true")
+              ) {
+                // Logout is required
+                sqlUpdatePassword =
+                  "UPDATE user SET password = ?, last_logout = ? WHERE e_mail = ?";
+                sqlUpdateArray = [
+                  newPassword,
+                  Date.now() / 1000,
+                  req.user.e_mail,
+                ];
+              } else {
+                // Logout isn't required
+                sqlUpdatePassword =
+                  "UPDATE user SET password = ? WHERE e_mail = ?";
+                sqlUpdateArray = [newPassword, req.user.e_mail];
+              }
+
+              db.query(
+                sqlUpdatePassword,
+                sqlUpdateArray,
+                (errorUpdate, resultUpdate) => {
+                  if (errorUpdate) {
+                    // Error while updating password
+
+                    console.log(err);
+                    res.status(500).send({
+                      feedback: process.env.FEEDBACK_DATABASE_ERROR,
+                    });
+
+                    return;
+                  } else {
+                    // Password changed, logged out if required
+                    res.status(201).send({
+                      feedback: process.env.FEEDBACK_USER_INFO_UPDATED,
+                    });
+
+                    return;
+                  }
+                }
+              );
+            } else {
+              // Passwords do not match, user found, response: feedback + HTTP403
+
+              res
+                .status(403)
+                .send({ feedback: process.env.FEEDBACK_CREDS_INVALID });
+
+              return;
+            }
+          }
+        );
+
+        return;
+      } else {
+        // User not found, response: feedback + HTTP404
+
+        res.status(404).send({
+          feedback: process.env.FEEDBACK_USER_NOT_FOUND,
+        });
+
+        return;
+      }
+    }
+  });
+});
+
 app.patch("/logout", (req, res) => {
   const e_mail = req.body.e_mail;
 
@@ -356,9 +460,12 @@ app.patch(
 
         // Updating user's profile picture in user table record in FB RTDB
         if (profile_picture != null) {
-          dbFB.ref(process.env.FB_RTDB_USER_TABLE_NAME).child(req.user.uid).update({
-            profile_picture: req.body.profile_picture,
-          });
+          dbFB
+            .ref(process.env.FB_RTDB_USER_TABLE_NAME)
+            .child(req.user.uid)
+            .update({
+              profile_picture: req.body.profile_picture,
+            });
         }
 
         // Updating user's authentication FB DB record

@@ -61,14 +61,21 @@ GET. Expects `access_token` and `firebase_token` in request header. Short descri
     * If a token isn't valid: `token_management.js` middleware handles sending the response
     * If the tokens are valid: respond with user info in form of a JSON object consisting of user's first name, last name and profile picture URL
 
-
 ### Update info
 
 #### `/updateInfo`
 Patch. Expects `access_token` and `firebase_token` in request header. Expects both first and last name or profile picture URL (or all three values) in the request body. Short description:
 * Checks whether the provided tokens are valid using [`authenticateAccessToken`](#authenticate-access-token) and [`authenticateFirebaseToken`](#authenticate-firebase-token):
     * If a token isn't valid: `token_management.js` middleware handles sending the response
-    * If the tokens are valid: update provided values in cropool.api database, Firebase RTDB and Firebase AUTHDB
+    * If the tokens are valid: update provided values in cropool.api database, Firebase RTDB and Firebase AUTHDB's first name, last name and profile picture URL
+
+### Update password
+
+#### `/changePassword`
+Patch. Expects `access_token` in request header. Expects current and new passsword in the request body with possible option `logout_required` that should be of boolean type. Short description:
+* Checks whether the provided token is valid using [`authenticateAccessToken`](#authenticate-access-token) and whether the current password is correct:
+    * If a token isn't valid or current password isn't correct: `token_management.js` middleware handles sending the response or 403 HTTP status + feedback
+    * If the token is valid and current password is correct: update password in cropool.api database, logout from all devices if required
 
 
 ## Token management
@@ -94,42 +101,36 @@ Generates Firebase JWT that will belong to user with e-mail address `email` and 
 ### Register user and generate Firebase token
 
 #### `registerUserGenerateFirebaseJWT(iduser, email, displayName, callback)`
-Generates Firebase JWT that will belong to user with e-mail address `email` and will be used to authenticate with Firebase service. If the user wasn't registered to Firebase yet, a new user with an UID 'iduser' is created. His e-mail address is 'email' and his display name is 'displayName'. 
+Generates Firebase JWT that will belong to user with e-mail address `email` and will be used to authenticate with Firebase service. If the user wasn't registered to Firebase yet, a new user with an UID 'iduser' is created. His e-mail address is 'email' and his display name is 'displayName'.
+
+### Authenticate token
+
+#### `authenticateToken(tokenName, req, res, next)`
+
+Expects an refresh/access JWT in request's `tokenName` header (format "Bearer \<token\>"). Middleware used for authenticating refresh/access tokens with API endpoints that respond with user-specific sensitive information. Short description:
+* Checks whether the token is null:
+    * If the token is null: send response with HTTP 401 status
+    * If the token isn't null: check whether the token is valid:
+        * If the token isn't valid: send response with HTTP 403 status
+        * If the token is valid: check whether the token was issued after user's creation timestamp and user's last logout timestamp:
+            * If the token was created before any of the mentioned timestamps: send response with HTTP 403 status and feedback string
+            * If the token was created after both of the mentioned timestamps:  forward `user` identified in token with `next()`
 
 ### Authenticate access token
 
 #### `authenticateAccessToken(req, res, next)`
-Expects an access JWT in request's `access_token` header (format "Bearer \<token\>"). Middleware used for authenticating access tokens with API endpoints that respond with user-specific sensitive information. Short description:
-* Checks whether the token is null:
-    * If the token is null: send response with HTTP 401 status
-    * If the token isn't null: check whether the token is valid:
-        * If the token isn't valid: send response with HTTP 403 status
-        * If the token is valid: forward `user` identified in token with `next()`
+
+Executes `authenticateToken("access_token", req, res, next)`.
 
 ### Authenticate refresh token
 
 #### `authenticateRefreshToken(req, res, next)`
-Expects a refresh JWT in request's `refresh_token` header (format "Bearer \<token\>"). Middleware used for authenticating refresh tokens with API endpoint that issues new access tokens [`/accessToken`](#access-token). Short description:
-* Checks whether the token is null:
-    * If the token is null: send response with HTTP 401 status
-    * If the token isn't null: check whether the token is valid:
-        * If the token isn't valid: send response with HTTP 403 status
-        * If the token is valid: check whether the token was issued after user's creation timestamp and user's last logout timestamp:
-            * If the token was created before any of the mentioned timestamps: send response with HTTP 403 status and feedback string
-            * If the token was created after both of the mentioned timestamps:  forward `user` identified in token with `next()`
+
+Executes `authenticateToken("refresh_token", req, res, next)`.
 
 ### Authenticate firebase token
 
 #### `authenticateFirebaseToken(req, res, next)`
-Expects a refresh JWT in request's `refresh_token` header (format "Bearer \<token\>"). Middleware used for authenticating refresh tokens with API endpoint that issues new access tokens [`/accessToken`](#access-token). Short description:
-* Checks whether the token is null:
-    * If the token is null: send response with HTTP 401 status
-    * If the token isn't null: check whether the token is valid:
-        * If the token isn't valid: send response with HTTP 403 status
-        * If the token is valid: check whether the token was issued after user's creation timestamp and user's last logout timestamp:
-            * If the token was created before any of the mentioned timestamps: send response with HTTP 403 status and feedback string
-            * If the token was created after both of the mentioned timestamps:  forward `user` identified in token with `next()`
-
 
 Expects an Firebase JWT in request's `firebase_token` header (format "Bearer \<token\>") and user's e-mail address in 'req.user.e_mail' field. Middleware used for authenticating access tokens with API endpoints that respond with/to Firebase user-specific sensitive information. Short description:
 * Checks whether the token is null:

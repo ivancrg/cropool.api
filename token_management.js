@@ -67,75 +67,69 @@ function generateFirebaseJWT(iduser, callback) {
     });
 }
 
-function authenticateAccessToken(req, res, next) {
+function authenticateToken(tokenName, req, res, next) {
   // Function that authenticates the token that was provided
-  // If the token is invalid, it returns
-
-  const accessHeader = req.headers["access_token"];
-  const token = accessHeader && accessHeader.split(" ")[1];
-
-  // No token provided, reponse HTTP401
-  if (token == null) return res.sendStatus(401);
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    // Token invalid (it was modified), response: HTTP403
-    if (err) return res.sendStatus(403);
-
-    // Token valid, communication with user 'user', forward 'user' with next()
-    req.user = user;
-    next();
-  });
-}
-
-function authenticateRefreshToken(req, res, next) {
-  // Function that authenticates the refresh token that was provided
   // The function also checks whether the token is active (issued after last logout timestamp)
   // (If the user has logged out, all of his refresh tokens were invalidated)
 
-  const refreshHeader = req.headers["refresh_token"];
-  const token = refreshHeader && refreshHeader.split(" ")[1];
+  const tokenHeader = req.headers[tokenName];
+  const token = tokenHeader && tokenHeader.split(" ")[1];
 
   // No token provided, reponse HTTP401
   if (token == null) return res.sendStatus(401);
 
-  jwt.verify(token, process.env.REFRESH_TOKEN_SECRET, (err, user) => {
-    // Token invalid (it was modified), response: HTTP403
-    if (err) return res.sendStatus(403);
+  jwt.verify(
+    token,
+    tokenName == "refresh_token"
+      ? process.env.REFRESH_TOKEN_SECRET
+      : process.env.ACCESS_TOKEN_SECRET,
+    (err, user) => {
+      // Token invalid (it was modified), response: HTTP403
+      if (err) return res.sendStatus(403);
 
-    // Token VALID, it was issued to user 'user.e_mail'
+      // Token VALID, it was issued to user 'user.e_mail'
 
-    // Validating token issued-at-wise
-    const sqlSelect =
-      "SELECT created_at, last_logout FROM user WHERE e_mail = ?";
+      // Validating token issued-at-wise
+      const sqlSelect =
+        "SELECT created_at, last_logout FROM user WHERE e_mail = ?";
 
-    db.query(sqlSelect, [user.e_mail], (err, result) => {
-      if (err) {
-        // Database error, return database error feedback
-        console.log(err);
-        return res.status(500).send({
-          feedback: process.env.FEEDBACK_DATABASE_ERROR,
-        });
-      } else if (result[0]) {
-        // User found, check if the token is valid
-
-        if (
-          result[0].last_logout < user.iat &&
-          result[0].created_at < user.iat
-        ) {
-          // Token issued after last logout and after user creation
-
-          req.user = user;
-          next();
-        } else {
-          // Token issued before last logout - therefore invalid
-
-          return res.status(403).send({
-            feedback: process.env.TOKEN_INACTIVE,
+      db.query(sqlSelect, [user.e_mail], (err, result) => {
+        if (err) {
+          // Database error, return database error feedback
+          console.log(err);
+          return res.status(500).send({
+            feedback: process.env.FEEDBACK_DATABASE_ERROR,
           });
+        } else if (result[0]) {
+          // User found, check if the token is valid
+
+          if (
+            result[0].last_logout < user.iat &&
+            result[0].created_at < user.iat
+          ) {
+            // Token issued after last logout and after user creation
+
+            req.user = user;
+            next();
+          } else {
+            // Token issued before last logout - therefore invalid
+
+            return res.status(403).send({
+              feedback: process.env.TOKEN_INACTIVE,
+            });
+          }
         }
-      }
-    });
-  });
+      });
+    }
+  );
+}
+
+function authenticateAccessToken(req, res, next) {
+    authenticateToken("access_token", req, res, next);
+}
+
+function authenticateRefreshToken(req, res, next) {
+    authenticateToken("refresh_token", req, res, next);
 }
 
 function authenticateFirebaseToken(req, res, next) {
