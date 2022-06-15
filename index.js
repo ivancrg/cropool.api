@@ -7,7 +7,14 @@ require("dotenv").config();
 const bcrypt = require("bcrypt");
 const tokenMgmt = require("./token_management");
 const { getDatabase } = require("firebase-admin/database");
+
 var admin = require("firebase-admin");
+
+var serviceAccount = require(process.env.FIREBASE_JSON_KEY_LOCATION);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: process.env.FB_RTDB_URL,
+});
 
 const dbFB = getDatabase();
 
