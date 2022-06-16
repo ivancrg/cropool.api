@@ -5,6 +5,7 @@ const cors = require("cors");
 const mysql = require("mysql");
 require("dotenv").config();
 const bcrypt = require("bcrypt");
+const routeMgmt = require("./route_management")
 const tokenMgmt = require("./token_management");
 const { getDatabase } = require("firebase-admin/database");
 
@@ -498,6 +499,10 @@ app.patch(
     });
   }
 );
+
+app.post("/addRoute", (req, res) => {
+    routeMgmt.addRoute(req, res);
+});
 
 app.listen(process.env.PORT || PORT, () => {
   console.log(`Running on port ${PORT}`);
