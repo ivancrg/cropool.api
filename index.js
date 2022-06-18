@@ -504,6 +504,10 @@ app.post("/addRoute", (req, res) => {
     routeMgmt.addRoute(req, res);
 });
 
+app.post("/findRoute", (req, res) => {
+    routeMgmt.findRoute(req, res);
+});
+
 app.listen(process.env.PORT || PORT, () => {
   console.log(`Running on port ${PORT}`);
 });
