@@ -1,3 +1,4 @@
+const { query } = require("express");
 const mysql = require("mysql");
 require("dotenv").config();
 const map_util = require("./map_utility");
@@ -14,16 +15,38 @@ function addRoute(req, res) {
   const idowner = req.body.id_owner;
   const startLatLng = req.body.start_latlng;
   const finishLatLng = req.body.finish_latlng;
-  const startTS = req.body.start_timestamp;
   const repetitionMode = req.body.repetition_mode;
   const pricePerKm = req.body.price_per_km;
+  const customRepetition =
+    req.body.custom_repetition == null
+      ? false
+      : req.body.custom_repetition === true
+      ? true
+      : false;
+  const startMonth = req.body.start_month;
+  const startDayOfMonth = req.body.start_day_of_month;
+  const startDayOfWeek = req.body.start_day_of_week;
+  const startHourOfDay = req.body.start_hour_of_day;
+  const startMinuteOfHour = req.body.start_minute_of_hour;
+  const note = req.body.note;
 
   if (
     idowner == null ||
     startLatLng == null ||
     finishLatLng == null ||
-    startTS == null ||
-    repetitionMode == null ||
+    // If repetition isn't custom, all of these things need to be defined
+    // Although we won't need some values for finding a route...
+    (customRepetition == false &&
+      (repetitionMode == null ||
+        startMonth == null ||
+        startDayOfMonth == null ||
+        startDayOfWeek == null ||
+        startHourOfDay == null ||
+        startMinuteOfHour == null)) ||
+    // If repetition is custom, we need to have a note describing it
+    (customRepetition == true && note == null) ||
+    // Repetition can't be both custom and predefined
+    (customRepetition == true && repetitionMode != null) ||
     pricePerKm == null
   ) {
     res.status(400).send({
@@ -46,56 +69,85 @@ function addRoute(req, res) {
         duration = distance / 60.0;
       }
 
-      // Query for inserting route record in route table
-      const insertRouteQuery =
-        "INSERT INTO route (idowner, start_latlng, finish_latlng, start_timestamp, repetition_mode, price_per_km, current_distance, current_duration, created_at, next_start_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      var insertRouteQuery = "";
+      var insertRouteQueryArr = [];
 
-      db.query(
-        insertRouteQuery,
-        [
-          idowner,
-          startLatLng,
-          finishLatLng,
-          startTS,
-          repetitionMode,
-          pricePerKm,
-          distance,
-          duration,
-          Date.now(),
-          startTS,
-        ],
-        (err, result) => {
-          if (err) {
-            // Database error, response: feedback + HTTP500
+      insertRouteQuery =
+        "INSERT INTO route (idowner, start_latlng, finish_latlng, custom_repetition, current_distance, current_duration, price_per_km, repetition_mode, start_month, start_day_of_month, start_day_of_week, start_hour_of_day, start_minute_of_hour, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      insertRouteQueryArr = [
+        idowner,
+        startLatLng,
+        finishLatLng,
+        customRepetition,
+        distance,
+        duration,
+        pricePerKm,
+        repetitionMode,
+        startMonth,
+        startDayOfMonth,
+        startDayOfWeek,
+        startHourOfDay,
+        startMinuteOfHour,
+        note,
+        Date.now(),
+      ];
 
-            res.status(500).send({
-              feedback: process.env.FEEDBACK_DATABASE_ERROR,
-            });
+      db.query(insertRouteQuery, insertRouteQueryArr, (err, result) => {
+        if (err) {
+          // Database error, response: feedback + HTTP500
 
-            console.log(err);
+          res.status(500).send({
+            feedback: process.env.FEEDBACK_DATABASE_ERROR,
+          });
 
-            return;
-          } else {
-            // Route created, response: feedback + HTTP201
+          console.log(err);
 
-            res.status(201).send({
-              feedback: process.env.FEEDBACK_ROUTE_CREATED,
-            });
+          return;
+        } else {
+          // Route created, response: feedback + HTTP201
 
-            return;
-          }
+          res.status(201).send({
+            feedback: process.env.FEEDBACK_ROUTE_CREATED,
+          });
+
+          return;
         }
-      );
+      });
     }
   );
 }
 
 function findRoute(req, res) {
   const passengerID = req.body.passenger_id;
+  const pickupLatLng = req.body.pickup_latlng;
+  const dropoffLatLng = req.body.dropoff_latlng;
+  const maxPricePerKm = req.body.max_price_per_km;
+  const customRepetition = req.body.custom_repetition;
+  const repetitionMode = req.body.repetition_mode;
+  const startMonth = req.body.start_month;
+  const startDayOfMonth = req.body.start_day_of_month;
+  const startDayOfWeek = req.body.start_day_of_week;
+  const startHourOfDay = req.body.start_hour_of_day;
+  const startMinuteOfHour = req.body.start_minute_of_hour;
+  const pickupSecondsTolerance =
+    req.body.pickup_timestamp_tolerance != null
+      ? req.body.pickup_timestamp_tolerance
+      : process.env.PICKUP_SECONDS_TOLERANCE;
 
-  if (passengerID == null) {
+  if (
+    passengerID == null ||
+    pickupLatLng == null ||
+    dropoffLatLng == null ||
+    (customRepetition == null && repetitionMode == null) ||
+    (repetitionMode != null &&
+      (startDayOfMonth == null ||
+        startHourOfDay == null ||
+        startMinuteOfHour == null))
+  ) {
     // Passenger ID has to be specified
     // (owner can't be his own passenger)
+
+    // If repetition is defined, we need some values at least
 
     res.status(400).send({
       feedback: process.env.FEEDBACK_INVALID_REQUEST,
@@ -103,16 +155,6 @@ function findRoute(req, res) {
 
     return;
   }
-
-  const pickupLatLng = req.body.pickup_latlng;
-  const dropoffLatLng = req.body.dropoff_latlng;
-  const pickupTimestamp = req.body.pickup_timestamp;
-  const repetitionMode = req.body.repetition_mode;
-  const maxPricePerKm = req.body.max_price_per_km;
-  const pickupTimestampTolerance =
-    req.body.pickup_timestamp_tolerance != null
-      ? req.body.pickup_timestamp_tolerance
-      : 0;
 
   // 1. Filter by repetitionMode (if null, skip) --> selectModePriceTS
   // 2. Filter by maxPriceByKm (if null, skip) --> selectModePriceTS
@@ -124,20 +166,33 @@ function findRoute(req, res) {
   // 5. Sort and select 25 routes from input s using the deviation from current_distance when adding the wanted checkpoint (pickup + dropoff)
 
   // Creating such query so that all values from filters 1, 2 and 3 can be null
-  selectModePriceTS =
+  var selectModePriceTS =
     "SELECT idroute, start_latlng, finish_latlng, current_distance, current_duration FROM route WHERE idowner <> ?" +
-    (repetitionMode != null ? " AND repetition_mode = ?" : "") +
     (maxPricePerKm != null ? " AND price_per_km <= ?" : "") +
-    (pickupTimestamp != null ? " AND ABS(start_timestamp - ?) <= ?" : "");
+    (customRepetition === true && repetitionMode == null
+      ? " AND custom_repetition = TRUE"
+      : repetitionTimeQuery(
+          repetitionMode,
+          startDayOfMonth,
+          startHourOfDay,
+          startMinuteOfHour,
+          pickupSecondsTolerance
+        )[0]);
 
   var selectModePriceTSArray = [passengerID];
 
   // DO NOT CHANGE ORDER (DEPENDING ON CREATION OF selectModePriceTS)
-  if (repetitionMode != null) selectModePriceTSArray.push(repetitionMode);
   if (maxPricePerKm != null) selectModePriceTSArray.push(maxPricePerKm);
-  if (pickupTimestamp != null) {
-    selectModePriceTSArray.push(pickupTimestamp);
-    selectModePriceTSArray.push(pickupTimestampTolerance);
+  if (!(customRepetition === true && repetitionMode == null)) {
+    selectModePriceTSArray = selectModePriceTSArray.concat(
+      repetitionTimeQuery(
+        repetitionMode,
+        startDayOfMonth,
+        startHourOfDay,
+        startMinuteOfHour,
+        pickupSecondsTolerance
+      )[1]
+    );
   }
 
   db.query(
@@ -203,6 +258,69 @@ function findRoute(req, res) {
       }
     }
   );
+}
+
+// Creates part of query that filters using repetition and start time parameters
+function repetitionTimeQuery(
+  repetitionMode,
+  startDayOfMonth,
+  startHourOfDay,
+  startMinuteOfHour,
+  pickupSecondsTolerance
+) {
+  var qry = "";
+  var qryArray = [];
+
+  if (repetitionMode == process.env.REPETITION_DAILY) {
+    // If repetition is daily, we need startHourOfDay, startMinuteOfHour and pickupSecondsTolerance
+
+    qry =
+      "repetition_mode = ? AND ABS((start_hour_of_day * 60 + start_minute_of_hour) - ?) <= ?";
+    qryArray = [
+      repetitionMode,
+      startHourOfDay * 60 + startMinuteOfHour,
+      pickupSecondsTolerance,
+    ];
+  } else if (repetitionMode == process.env.REPETITION_MONTHLY) {
+    // If repetition is monthly, we need startDayOfMonth, startHourOfDay, startMinuteOfHour and pickupSecondsTolerance
+
+    // const lastDayOfMonth =
+    //   startMonth == 2
+    //     ? 28
+    //     : startMonth != 2 &&
+    //       ((startMonth % 2 == 0 && startMonth <= 6) ||
+    //         (startMonth % 2 == 1 && startMonth >= 9))
+    //     ? 30
+    //     : 31;
+
+    qry =
+      "repetition_mode = ? AND start_day_of_month = ? AND ABS((start_hour_of_day * 60 + start_minute_of_hour) - ?) <= ?";
+    qryArray = [
+      repetitionMode,
+      startDayOfMonth,
+      startHourOfDay * 60 + startMinuteOfHour,
+      pickupSecondsTolerance,
+    ];
+  } else {
+    // Repetition on selected days
+    // MON = 1000000
+    // TUE = 200000
+    // WED = 30000
+    // THU = 4000
+    // FRI = 500
+    // SAT = 60
+    // SUN = 7
+
+    qry =
+      "repetition_mode = ? AND ABS((start_hour_of_day * 3600 + start_minute_of_hour * 60) - ?) <= ?";
+    qryArray = [
+      repetitionMode,
+      parseFloat(startHourOfDay) * 3600 + parseFloat(startMinuteOfHour) * 60,
+      pickupSecondsTolerance,
+    ];
+  }
+
+  return [" AND " + qry, qryArray];
 }
 
 module.exports = { addRoute, findRoute };
