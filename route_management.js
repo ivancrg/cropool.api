@@ -159,15 +159,18 @@ function findRoute(req, res) {
   // 1. Filter by repetitionMode (if null, skip) --> selectModePriceTS
   // 2. Filter by maxPriceByKm (if null, skip) --> selectModePriceTS
   // 3. Filter by pickupTimestamp with pickupTimestampTolerance (if null, skip) --> selectModePriceTS
-  // 4. Sort and select best 50 routes by lowest value of fitness function
+  // 4. Filter by already accepted/requested checkpoint requests (if there is an accepted or currently being considered checkpoint for the user
+  // and for some route, we won't take it into consideration (checkpoint table should ONLY contain accepted requests or not yet denied requests))
+  // (denied requests should be moved to checkpoint_denied table)
+  // 5. Sort and select best 50 routes by lowest value of fitness function
   //    min(airDistance(start_latlng, pickup_latlng), shortestPath(finish_latlng, dropoff_latlng)) relative to current_distance
   //    (we want routes where fitness function has the lowest percentage of current_distance (smallest movement from the start/finish))
   //    (this is just used to eliminate very unsuitable routes - e.g. from another country, continent etc.)
-  // 5. Sort and select 25 routes from input s using the deviation from current_distance when adding the wanted checkpoint (pickup + dropoff)
+  // 6. Sort and select 25 routes from input s using the deviation from current_distance when adding the wanted checkpoint (pickup + dropoff)
 
   // Creating such query so that all values from filters 1, 2 and 3 can be null
   var selectModePriceTS =
-    "SELECT idroute, start_latlng, finish_latlng, current_distance, current_duration FROM route WHERE idowner <> ?" +
+    "SELECT route.idroute, idowner, start_latlng, finish_latlng, current_distance, current_duration FROM route LEFT JOIN checkpoint ON checkpoint.idroute = route.idroute WHERE idowner <> ?  AND (checkpoint.idpassenger IS NULL OR checkpoint.idpassenger <> ? OR checkpoint.status <> 'ACCEPTED')" +
     (maxPricePerKm != null ? " AND price_per_km <= ?" : "") +
     (customRepetition === true && repetitionMode == null
       ? " AND custom_repetition = TRUE"
@@ -177,9 +180,10 @@ function findRoute(req, res) {
           startHourOfDay,
           startMinuteOfHour,
           pickupSecondsTolerance
-        )[0]);
+        )[0]) +
+    " GROUP BY route.idroute";
 
-  var selectModePriceTSArray = [passengerID];
+  var selectModePriceTSArray = [passengerID, passengerID];
 
   // DO NOT CHANGE ORDER (DEPENDING ON CREATION OF selectModePriceTS)
   if (maxPricePerKm != null) selectModePriceTSArray.push(maxPricePerKm);
@@ -322,5 +326,7 @@ function repetitionTimeQuery(
 
   return [" AND " + qry, qryArray];
 }
+
+function requestCheckpoint(req, res) {}
 
 module.exports = { addRoute, findRoute };
