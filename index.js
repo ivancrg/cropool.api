@@ -103,11 +103,11 @@ app.post("/register", (req, res) => {
                 res
                   .setHeader(
                     "access_token",
-                    tokenMgmt.generateAccessJWT(e_mail)
+                    tokenMgmt.generateAccessJWT(result.insertId, e_mail)
                   )
                   .setHeader(
                     "refresh_token",
-                    tokenMgmt.generateRefreshJWT(e_mail)
+                    tokenMgmt.generateRefreshJWT(result.insertId, e_mail)
                   )
                   .setHeader("firebase_token", firebaseToken)
                   .status(201)
@@ -162,11 +162,11 @@ app.post("/login", (req, res) => {
                   res
                     .setHeader(
                       "access_token",
-                      tokenMgmt.generateAccessJWT(e_mail)
+                      tokenMgmt.generateAccessJWT(resultSelect[0].iduser, e_mail)
                     )
                     .setHeader(
                       "refresh_token",
-                      tokenMgmt.generateRefreshJWT(e_mail)
+                      tokenMgmt.generateRefreshJWT(resultSelect[0].iduser, e_mail)
                     )
                     .setHeader("firebase_token", firebaseToken)
                     .status(201)
@@ -351,7 +351,7 @@ app.get("/tokens", tokenMgmt.authenticateRefreshToken, (req, res) => {
         res
           .setHeader(
             "access_token",
-            tokenMgmt.generateAccessJWT(req.user.e_mail)
+            tokenMgmt.generateAccessJWT(result[0].iduser, req.user.e_mail)
           )
           .setHeader("firebase_token", firebaseToken)
           .status(201)
@@ -506,6 +506,22 @@ app.post("/addRoute", (req, res) => {
 
 app.post("/findRoute", (req, res) => {
     routeMgmt.findRoute(req, res);
+});
+
+app.post("/requestCheckpoint", (req, res) => {
+    routeMgmt.createCheckpointRequest(req, res);
+});
+
+app.patch("/acceptCheckpoint", (req, res) => {
+    routeMgmt.acceptCheckpointRequest(req, res);
+});
+
+app.patch("/removeCheckpoint", (req, res) => {
+    routeMgmt.removeCheckpoint(req, res);
+});
+
+app.patch("/unsubscribeCheckpoint", (req, res) => {
+    routeMgmt.unsubscribeCheckpoint(req, res);
 });
 
 app.listen(process.env.PORT || PORT, () => {
