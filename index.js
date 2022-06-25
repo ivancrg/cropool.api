@@ -41,6 +41,7 @@ app.post("/register", (req, res) => {
   const last_name = req.body.last_name;
   const e_mail = req.body.e_mail;
   const password_hash = req.body.password;
+  const registration_id = req.body.registration_id;
 
   const sqlSelect = "SELECT * FROM user WHERE e_mail = ?";
 
@@ -67,7 +68,7 @@ app.post("/register", (req, res) => {
       // User not found, no error in sqlSelect query
 
       const sqlInsert =
-        "INSERT INTO user (first_name, last_name, e_mail, password, created_at, last_logout) VALUES (?, ?, ?, ?, ?, ?)";
+        "INSERT INTO user (first_name, last_name, e_mail, password, created_at, last_logout, registration_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
       currentTimeSeconds = Math.round(Date.now() / 1000);
 
       db.query(
@@ -79,6 +80,7 @@ app.post("/register", (req, res) => {
           password_hash,
           currentTimeSeconds,
           currentTimeSeconds,
+          registration_id,
         ],
         (err, result) => {
           if (err) {
@@ -498,6 +500,79 @@ app.patch(
     });
   }
 );
+
+app.patch(
+  "/updateRegistrationToken",
+  tokenMgmt.authenticateAccessToken,
+  tokenMgmt.authenticateFirebaseToken,
+  (req, res) => {
+    const registration_id = req.body.registration_id;
+
+    var sqlUpdate = "";
+    const updateArray = [];
+
+    if (registration_id != null) {
+        sqlUpdate =
+            "UPDATE user SET registration_id = ? WHERE e_mail = ?";
+        updateArray.push(registration_id);
+        updateArray.push(req.user.e_mail);
+    } else {
+        // All values are null
+        return res.statusCode(400);
+    }
+
+    updateArray.push(req.user.e_mail);
+
+    db.query(sqlUpdate, updateArray, (err, result) => {
+    if (err) {
+        // Database error, response: feedback + HTTP500
+
+        res.status(500).send({
+            feedback: process.env.FEEDBACK_DATABASE_ERROR,
+        });
+
+        return;
+    } else {
+        // User's name updated, response: feedback + HTTP201
+
+        // Updating user's name in user table record in FB RTDB
+        if (registration_id != null) {
+        dbFB
+            .ref(process.env.FB_RTDB_USER_TABLE_NAME)
+            .child(req.user.uid)
+            .update({
+            registration_id: req.body.registration_id
+            });
+        }
+
+        res.status(201).send({
+        feedback: process.env.FEEDBACK_USER_INFO_UPDATED,
+        });
+    }
+    });
+  }
+);
+
+function notificationExample(){
+  //const topic = 'notifications';
+  const registrationToken = 'example_token';
+  var message = {
+    notification: {
+      title: 'Message from node',
+      body: 'Hey there'
+    },
+    token: registrationToken
+    //topic: topic
+  };
+
+  admin.messaging().send(message)
+    .then((response) => {
+      console.log('Successfully sent message:', response);
+    })
+    .catch((error) => {
+      console.log('Error sending message:', error);
+  });
+}
 
 app.listen(process.env.PORT || PORT, () => {
   console.log(`Running on port ${PORT}`);
