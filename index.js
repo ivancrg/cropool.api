@@ -5,7 +5,7 @@ const cors = require("cors");
 const mysql = require("mysql");
 require("dotenv").config();
 const bcrypt = require("bcrypt");
-const routeMgmt = require("./route_management")
+const routeMgmt = require("./route_management");
 const tokenMgmt = require("./token_management");
 const { getDatabase } = require("firebase-admin/database");
 
@@ -162,11 +162,17 @@ app.post("/login", (req, res) => {
                   res
                     .setHeader(
                       "access_token",
-                      tokenMgmt.generateAccessJWT(resultSelect[0].iduser, e_mail)
+                      tokenMgmt.generateAccessJWT(
+                        resultSelect[0].iduser,
+                        e_mail
+                      )
                     )
                     .setHeader(
                       "refresh_token",
-                      tokenMgmt.generateRefreshJWT(resultSelect[0].iduser, e_mail)
+                      tokenMgmt.generateRefreshJWT(
+                        resultSelect[0].iduser,
+                        e_mail
+                      )
                     )
                     .setHeader("firebase_token", firebaseToken)
                     .status(201)
@@ -236,8 +242,7 @@ app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
 
               if (
                 logoutRequired != null &&
-                (logoutRequired == true ||
-                  logoutRequired.toString() == "true")
+                (logoutRequired == true || logoutRequired.toString() == "true")
               ) {
                 // Logout is required
                 sqlUpdatePassword =
@@ -501,27 +506,37 @@ app.patch(
 );
 
 app.post("/addRoute", (req, res) => {
-    routeMgmt.addRoute(req, res);
+  routeMgmt.addRoute(req, res);
 });
 
 app.post("/findRoute", (req, res) => {
-    routeMgmt.findRoute(req, res);
+  routeMgmt.findRoute(req, res);
 });
 
 app.post("/requestCheckpoint", (req, res) => {
-    routeMgmt.createCheckpointRequest(req, res);
+  routeMgmt.createCheckpointRequest(req, res);
 });
 
 app.patch("/acceptCheckpoint", (req, res) => {
-    routeMgmt.acceptCheckpointRequest(req, res);
+  routeMgmt.acceptCheckpointRequest(req, res);
 });
 
 app.patch("/removeCheckpoint", (req, res) => {
-    routeMgmt.removeCheckpoint(req, res);
+  routeMgmt.removeCheckpoint(req, res);
 });
 
 app.patch("/unsubscribeCheckpoint", (req, res) => {
-    routeMgmt.unsubscribeCheckpoint(req, res);
+  routeMgmt.unsubscribeCheckpoint(req, res);
+});
+
+// CHANGE TO GET WITH ACCESS TOKEN
+app.post("/subscribedToRoutes", (req, res) => {
+  routeMgmt.getSubscribedToRoutes(req, res);
+});
+
+// CHANGE TO GET WITH ACCESS TOKEN
+app.post("/myRoutes", (req, res) => {
+  routeMgmt.getMyRoutes(req, res);
 });
 
 app.listen(process.env.PORT || PORT, () => {

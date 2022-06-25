@@ -175,7 +175,7 @@ function findRoute(req, res) {
 
   // Creating such query so that all values from filters 1, 2 and 3 can be null
   var selectModePriceTS =
-    "SELECT route.idroute, idowner, start_latlng, finish_latlng, current_distance, current_duration FROM route LEFT JOIN checkpoint ON checkpoint.idroute = route.idroute WHERE idowner <> ?  AND (checkpoint.idpassenger IS NULL OR checkpoint.idpassenger <> ? OR checkpoint.status <> 'ACCEPTED')" +
+    "SELECT route.idroute, idowner, first_name, last_name, profile_picture, start_latlng, finish_latlng, current_distance, current_duration, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON checkpoint.idroute = route.idroute WHERE idowner <> ?  AND (checkpoint.idpassenger IS NULL OR checkpoint.idpassenger <> ? OR checkpoint.status <> 'ACCEPTED')" +
     (maxPricePerKm != null ? " AND price_per_km <= ?" : "") +
     (customRepetition === true && repetitionMode == null
       ? " AND custom_repetition = TRUE"
@@ -743,14 +743,233 @@ function unsubscribeCheckpoint(req, res) {
   });
 }
 
-// Retreives list of routes subscribed (accepted/requested checkpoint) to for user req.user.iduser
-function getSubscribedToRoutes(req, res){
-    // TODO
+// Retreives list of routes subscribed (accepted checkpoint) to for user req.user.iduser
+function getSubscribedToRoutes(req, res) {
+  const userID = req.body.user_id; //= req.user.iduser;
+  var resultingRoutes = [];
+  var resultingRoutesSize = 0;
+
+  const selectSubscribedRoutesQry =
+    "SELECT DISTINCT route.idroute, idowner, first_name, last_name, profile_picture, start_latlng, finish_latlng, name, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON route.idroute = checkpoint.idroute WHERE idpassenger = ?";
+  db.query(
+    selectSubscribedRoutesQry,
+    [userID],
+    (subscribedRoutesError, subscribedRoutesResult) => {
+      if (subscribedRoutesError || subscribedRoutesResult == null) {
+        // Database error, response: feedback + HTTP500
+
+        res.status(500).send({
+          feedback: process.env.FEEDBACK_DATABASE_ERROR,
+        });
+
+        console.log(subscribedRoutesError);
+
+        return;
+      }
+
+      // Subscribed routes found
+
+      // Convert to objects
+      subscribedRoutesResult = Object.values(
+        JSON.parse(JSON.stringify(subscribedRoutesResult))
+      );
+
+      // Set resultingRouteSize to respond only when all the routes are supplemented
+      resultingRoutesSize = subscribedRoutesResult.length;
+
+      if (resultingRoutesSize == 0) {
+        // No such routes found
+        // console.log("NOROUTES");
+        res.status(201).send({
+          result: resultingRoutes,
+        });
+        return;
+      }
+
+      subscribedRoutesResult.forEach((r) => {
+        // We need to get the passengers and directionsAPI object
+        // for each route and then forward it to res
+        r.custom_repetition = r.custom_repetition.data == true;
+
+        supplementRouteInfo(r, (error, supplementedRoute) => {
+          if (error || supplementRouteInfo == null) {
+            resultingRoutesSize -= 1;
+          } else {
+            resultingRoutes.push(supplementedRoute);
+          }
+
+          if (resultingRoutesSize <= resultingRoutes.length) {
+            // We supplemented all the routes the user is subscribed to
+            res.status(201).send({
+              result: resultingRoutes,
+            });
+
+            return;
+          }
+        });
+      });
+    }
+  );
 }
 
 // Retreives list of created routes of user req.user.iduser
-function getMyRoutes(req, res){
-    // TODO
+function getMyRoutes(req, res) {
+  const userID = req.body.user_id; //= req.user.iduser;
+  var resultingRoutes = [];
+  var resultingRoutesSize = 0;
+
+  const selectMyRoutesQry =
+    "SELECT DISTINCT idroute, idowner, first_name, last_name, profile_picture, name, start_latlng, finish_latlng, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner WHERE idowner = ?";
+  db.query(
+    selectMyRoutesQry,
+    [userID],
+    (selectMyRoutesError, selectMyRoutesResult) => {
+      if (selectMyRoutesError || selectMyRoutesResult == null) {
+        // Database error, response: feedback + HTTP500
+
+        res.status(500).send({
+          feedback: process.env.FEEDBACK_DATABASE_ERROR,
+        });
+
+        console.log(selectMyRoutesError);
+
+        return;
+      }
+
+      // User's routes found
+
+      // Convert to objects
+      selectMyRoutesResult = Object.values(
+        JSON.parse(JSON.stringify(selectMyRoutesResult))
+      );
+
+      // Set resultingRouteSize to respond only when all the routes are supplemented
+      resultingRoutesSize = selectMyRoutesResult.length;
+
+      if (resultingRoutesSize == 0) {
+        // No such routes found
+        res.status(201).send({
+          result: resultingRoutes,
+        });
+        return;
+      }
+
+      selectMyRoutesResult.forEach((r) => {
+        // We need to get the passengers and directionsAPI object
+        // for each route and then forward it to res
+        r.custom_repetition = r.custom_repetition.data == true;
+
+        supplementRouteInfo(r, (error, supplementedRoute) => {
+          if (error || supplementRouteInfo == null) {
+            resultingRoutesSize -= 1;
+          } else {
+            resultingRoutes.push(supplementedRoute);
+          }
+
+          if (resultingRoutesSize <= resultingRoutes.length) {
+            // We supplemented all the routes the user is subscribed to
+            res.status(201).send({
+              result: resultingRoutes,
+            });
+
+            return;
+          }
+        });
+      });
+    }
+  );
+}
+
+// Supplements existing routeInfo with passengers data and directions
+// Returns (error, supplementedRouteInfo)
+function supplementRouteInfo(routeInfo, callback) {
+  // 1. Find all passengers and their checkpoint and general data and supplement it
+  // 2. Find all checkpoints that will be used as waypoints
+  // 3. Get Google directionsAPI response object and supplement it
+  passengersQuery =
+    "SELECT DISTINCT idpassenger, idcheckpoint, pickup_latlng, dropoff_latlng, first_name, last_name, profile_picture FROM checkpoint LEFT JOIN user ON checkpoint.idpassenger = user.iduser WHERE idroute = ? AND status = 'ACCEPTED'";
+  db.query(
+    passengersQuery,
+    [routeInfo.idroute],
+    (passengerError, passengerResult) => {
+      if (passengerError || passengerResult == null) {
+        console.log("PASSENGER ERROR", passengerError, passengerResult);
+      } else {
+        if (passengerResult[0] == null) {
+          // No passengers on route, proceed to directions
+          routeInfo.passengers = [];
+        } else {
+          // Passengers on route found
+
+          // Convert to objects
+          passengerResult = Object.values(
+            JSON.parse(JSON.stringify(passengerResult))
+          );
+
+          // Supplement passengers to routeInfo object
+          routeInfo.passengers = passengerResult;
+        }
+
+        // Find all checkpoints, and get the directions
+        checkpointsQuery =
+          "SELECT pickup_latlng, dropoff_latlng FROM heroku_a9e781d006deb13.checkpoint WHERE idroute = ? AND status = 'ACCEPTED'";
+        db.query(
+          checkpointsQuery,
+          [routeInfo.idroute],
+          (checkpointsError, checkpointsResult) => {
+            if (checkpointsError || checkpointsResult == null) {
+              console.log(
+                "CHECKPOINTS ERROR",
+                checkpointsError,
+                checkpointsResult
+              );
+            } else {
+              // Retreived some checkpoints or have no checkpoints
+
+              var checkpointWaypoints = [];
+
+              if (checkpointsResult[0] != null) {
+                // Some checkpoints found on route
+                // Convert to objects
+                var checkpoints = Object.values(
+                  JSON.parse(JSON.stringify(checkpointsResult))
+                );
+
+                checkpoints.forEach((checkpoint) => {
+                  // Add checkpoint to directionsAPIQuery using checkpoint.dropoff_latlng and checkpoint.pickup_latlng
+                  checkpointWaypoints.push(checkpoint.pickup_latlng);
+                  checkpointWaypoints.push(checkpoint.dropoff_latlng);
+                });
+              }
+
+              // Download directions from Google's directionsAPI
+              map_util.getDirections(
+                routeInfo.start_latlng,
+                routeInfo.finish_latlng,
+                checkpointWaypoints,
+                (directionsError, directionsResult) => {
+                  if (directionsError || directionsResult == null) {
+                    // There was an error with directions download
+                    console.log(
+                      "DIRECTIONSERRROR",
+                      directionsError,
+                      directionsResult
+                    );
+                    routeInfo.directions = null;
+                  } else {
+                    // Directions downloaded
+                    routeInfo.directions = directionsResult;
+                  }
+
+                  callback(null, routeInfo);
+                }
+              );
+            }
+          }
+        );
+      }
+    }
+  );
 }
 
 module.exports = {
@@ -760,4 +979,6 @@ module.exports = {
   acceptCheckpointRequest,
   removeCheckpoint,
   unsubscribeCheckpoint,
+  getSubscribedToRoutes,
+  getMyRoutes,
 };

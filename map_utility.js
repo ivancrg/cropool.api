@@ -69,45 +69,57 @@ function sortByDev(
             pickupLatLng,
             dropoffLatLng,
             checkpointWaypoints,
-            (error, isRouteValid, distance, duration) => {
+            (error, isRouteValid, distance, duration, directions) => {
               // We processed this route
               numberOfRoutes -= 1;
 
               if (error) {
                 console.log("/directionsAPI", error);
-                return;
+              } else {
+                // We take into consideration the distance and duration between chekcpoints
+                // without carpooling also (we want the distance deviation to be
+                // at least CHECKPOINT_SAVE % less than checkpointDistance)
+                // Also, we allow upto CHECKPOINT_TOLERATION % increase in duration
+                // (durationDeviation can be upto CHECKPOINT_TOLERATION % bigger than checkpointDuration)
+                // (if deviation is equal or more than the actual distance/duration between checkpoints,
+                // carpooling doesn't make sense)
+                const isCarpoolingValid =
+                  distance - route.current_distance <
+                    checkpointDistance *
+                      (1 - parseFloat(process.env.CHECKPOINT_SAVE)) &&
+                  duration - route.current_duration <
+                    checkpointDuration *
+                      (1 + parseFloat(process.env.CHECKPOINT_TOLERATION));
+
+                if (isRouteValid && isCarpoolingValid) {
+                  // Current route is configured in the same way as pickup and dropoff locations
+                  // On query's callback:
+                  //      const deviationPercentage = (query.directiondistanceInMeters - route.current_distance) / route.current_distance * 100
+                  //      (deviationPercentage can be negative if the route shortened, it's unlikely though)
+                  deviationPercentage =
+                    ((distance - route.current_distance) /
+                      route.current_distance) *
+                    100.0;
+
+                  devRoutes.push({
+                    idroute: route.idroute,
+                    idowner: route.idowner,
+                    owner_first_name: route.first_name,
+                    owner_last_name: route.last_name,
+                    owner_profile_picture: route.profile_picture,
+                    custom_repetition: route.custom_repetition.data == true,
+                    repetition_mode: route.repetition_mode,
+                    start_day_of_month: route.start_day_of_month,
+                    start_hour_of_day: route.start_hour_of_day,
+                    start_minute_of_hour: route.start_minute_of_hour,
+                    note: route.note,
+                    price_per_km: route.price_per_km,
+                    created_at: route.created_at,
+                    devPercentage: deviationPercentage,
+                    directions: directions,
+                  });
+                } // Else, just make numberOfRoutes smaller
               }
-
-              // We take into consideration the distance and duration between chekcpoints
-              // without carpooling also (we want the distance deviation to be
-              // at least CHECKPOINT_SAVE % less than checkpointDistance)
-              // Also, we allow upto CHECKPOINT_TOLERATION % increase in duration
-              // (durationDeviation can be upto CHECKPOINT_TOLERATION % bigger than checkpointDuration)
-              // (if deviation is equal or more than the actual distance/duration between checkpoints,
-              // carpooling doesn't make sense)
-              const isCarpoolingValid =
-                distance - route.current_distance <
-                  checkpointDistance *
-                    (1 - parseFloat(process.env.CHECKPOINT_SAVE)) &&
-                duration - route.current_duration <
-                  checkpointDuration *
-                    (1 + parseFloat(process.env.CHECKPOINT_TOLERATION));
-
-              if (isRouteValid && isCarpoolingValid) {
-                // Current route is configured in the same way as pickup and dropoff locations
-                // On query's callback:
-                //      const deviationPercentage = (query.directiondistanceInMeters - route.current_distance) / route.current_distance * 100
-                //      (deviationPercentage can be negative if the route shortened, it's unlikely though)
-                deviationPercentage =
-                  ((distance - route.current_distance) /
-                    route.current_distance) *
-                  100.0;
-
-                devRoutes.push({
-                  idroute: route.idroute,
-                  devPercentage: deviationPercentage,
-                });
-              } // Else, just make numberOfRoutes smaller
 
               if (numberOfRoutes <= 0) {
                 // We processed all the routes
@@ -231,6 +243,11 @@ function getDistanceDurationWP(
       var routeDistance = 0;
       var routeDuration = 0;
 
+      const directions = res.data.routes[0].overview_polyline.points;
+
+      // console.log(originLatlng, destinationLatLng, waypoints);
+      // console.log(res.data);
+
       // Convert to objects
       legs = Object.values(JSON.parse(JSON.stringify(res.data.routes[0].legs)));
 
@@ -269,10 +286,10 @@ function getDistanceDurationWP(
         }
       }
 
-      callback(null, isRouteValid, routeDistance, routeDuration);
+      callback(null, isRouteValid, routeDistance, routeDuration, directions);
     })
     .catch((exc) => {
-      callback(exc, null, null, null);
+      callback(exc, null, null, null, null);
     });
 }
 
@@ -307,9 +324,54 @@ function getDistanceDuration(originLatlng, destinationLatLng, callback) {
     });
 }
 
+// Retreiving info about fastest route using set checkpoints
+// Returns (error, directions)
+function getDirections(originLatlng, destinationLatLng, waypoints, callback) {
+  var customParams;
+  if (waypoints.length <= 0) {
+    customParams = {
+      key: process.env.DIRECTIONS_API_KEY,
+      origin: originLatlng,
+      destination: destinationLatLng,
+    };
+  } else {
+    customParams = {
+      key: process.env.DIRECTIONS_API_KEY,
+      origin: originLatlng,
+      destination: destinationLatLng,
+      optimize: true,
+      waypoints: waypoints,
+    };
+  }
+
+  google_client
+    .directions({
+      params: customParams,
+    })
+    .then((directions) => {
+      if (
+        directions == null ||
+        directions.data == null ||
+        directions.data.routes[0] == null ||
+        directions.data.routes[0].overview_polyline == null ||
+        directions.data.routes[0].overview_polyline.points == null
+      ) {
+        // No point in forwarding the directions if they're not there
+        callback(true, null);
+        return;
+      }
+
+      callback(null, directions.data.routes[0].overview_polyline.points);
+    })
+    .catch((exc) => {
+      callback(exc, null);
+    });
+}
+
 module.exports = {
   airDistanceMeters,
   filterByAirDistance,
   sortByDev,
   getDistanceDuration,
+  getDirections,
 };
