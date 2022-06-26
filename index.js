@@ -502,77 +502,11 @@ app.patch(
 );
 
 app.patch(
-  "/updateRegistrationToken",
+  "/updateRegistrationToken", 
   tokenMgmt.authenticateAccessToken,
   tokenMgmt.authenticateFirebaseToken,
-  (req, res) => {
-    const registration_id = req.body.registration_id;
-
-    var sqlUpdate = "";
-    const updateArray = [];
-
-    if (registration_id != null) {
-        sqlUpdate =
-            "UPDATE user SET registration_id = ? WHERE e_mail = ?";
-        updateArray.push(registration_id);
-        updateArray.push(req.user.e_mail);
-    } else {
-        // All values are null
-        return res.statusCode(400);
-    }
-
-    updateArray.push(req.user.e_mail);
-
-    db.query(sqlUpdate, updateArray, (err, result) => {
-    if (err) {
-        // Database error, response: feedback + HTTP500
-
-        res.status(500).send({
-            feedback: process.env.FEEDBACK_DATABASE_ERROR,
-        });
-
-        return;
-    } else {
-        // User's name updated, response: feedback + HTTP201
-
-        // Updating user's name in user table record in FB RTDB
-        if (registration_id != null) {
-        dbFB
-            .ref(process.env.FB_RTDB_USER_TABLE_NAME)
-            .child(req.user.uid)
-            .update({
-            registration_id: req.body.registration_id
-            });
-        }
-
-        res.status(201).send({
-        feedback: process.env.FEEDBACK_USER_INFO_UPDATED,
-        });
-    }
-    });
-  }
+  (req, res) => {tokenMgmt.updateRegToken(req, res, dbFB);}
 );
-
-function notificationExample(){
-  //const topic = 'notifications';
-  const registrationToken = 'example_token';
-  var message = {
-    notification: {
-      title: 'Message from node',
-      body: 'Hey there'
-    },
-    token: registrationToken
-    //topic: topic
-  };
-
-  admin.messaging().send(message)
-    .then((response) => {
-      console.log('Successfully sent message:', response);
-    })
-    .catch((error) => {
-      console.log('Error sending message:', error);
-  });
-}
 
 app.listen(process.env.PORT || PORT, () => {
   console.log(`Running on port ${PORT}`);
