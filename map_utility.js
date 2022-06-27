@@ -31,6 +31,10 @@ function sortByDev(
   // When devRoutes size reaches this number, we know we processed all routes
   // We can then sort, slice and return the end result
   var numberOfRoutes = routes.length;
+  if (numberOfRoutes <= 0) {
+    callback(devRoutes);
+    return;
+  }
 
   // Iterate through all routes
   routes.forEach((route) => {
@@ -75,6 +79,20 @@ function sortByDev(
 
               if (error) {
                 console.log("/directionsAPI", error);
+                if (numberOfRoutes <= 0) {
+                  // We processed all the routes
+
+                  // We sort the routes from the smallest deviation percentage upwards
+                  devRoutes = devRoutes.sort((dr1, dr2) => {
+                    dr1.devPercentage - dr2.devPercentage;
+                  });
+
+                  // We slice the routes to set number
+                  devRoutes = devRoutes.slice(0, cutoff);
+
+                  // We return the end result via callback
+                  callback(devRoutes);
+                }
               } else {
                 // We take into consideration the distance and duration between chekcpoints
                 // without carpooling also (we want the distance deviation to be
@@ -107,6 +125,7 @@ function sortByDev(
                     owner_first_name: route.first_name,
                     owner_last_name: route.last_name,
                     owner_profile_picture: route.profile_picture,
+                    name: route.name,
                     custom_repetition: route.custom_repetition.data == true,
                     repetition_mode: route.repetition_mode,
                     start_day_of_month: route.start_day_of_month,
@@ -119,21 +138,21 @@ function sortByDev(
                     directions: directions,
                   });
                 } // Else, just make numberOfRoutes smaller
-              }
 
-              if (numberOfRoutes <= 0) {
-                // We processed all the routes
+                if (numberOfRoutes <= 0) {
+                  // We processed all the routes
 
-                // We sort the routes from the smallest deviation percentage upwards
-                devRoutes = devRoutes.sort((dr1, dr2) => {
-                  dr1.devPercentage - dr2.devPercentage;
-                });
+                  // We sort the routes from the smallest deviation percentage upwards
+                  devRoutes = devRoutes.sort((dr1, dr2) => {
+                    dr1.devPercentage - dr2.devPercentage;
+                  });
 
-                // We slice the routes to set number
-                devRoutes = devRoutes.slice(0, cutoff);
+                  // We slice the routes to set number
+                  devRoutes = devRoutes.slice(0, cutoff);
 
-                // We return the end result via callback
-                callback(devRoutes);
+                  // We return the end result via callback
+                  callback(devRoutes);
+                }
               }
             }
           );

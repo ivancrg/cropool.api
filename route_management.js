@@ -123,7 +123,7 @@ function addRoute(req, res) {
 }
 
 function findRoute(req, res) {
-  const passengerID = req.body.passenger_id;
+  const passengerID = req.user.iduser;
   const pickupLatLng = req.body.pickup_latlng;
   const dropoffLatLng = req.body.dropoff_latlng;
   const maxPricePerKm = req.body.max_price_per_km;
@@ -175,7 +175,7 @@ function findRoute(req, res) {
 
   // Creating such query so that all values from filters 1, 2 and 3 can be null
   var selectModePriceTS =
-    "SELECT route.idroute, idowner, first_name, last_name, profile_picture, start_latlng, finish_latlng, current_distance, current_duration, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON checkpoint.idroute = route.idroute WHERE idowner <> ?  AND (checkpoint.idpassenger IS NULL OR checkpoint.idpassenger <> ? OR checkpoint.status <> 'ACCEPTED')" +
+    "SELECT route.idroute, idowner, first_name, last_name, profile_picture, start_latlng, finish_latlng, name, route.created_at, current_distance, current_duration, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON checkpoint.idroute = route.idroute WHERE idowner <> ?  AND (checkpoint.idpassenger IS NULL OR checkpoint.idpassenger <> ? OR checkpoint.status <> 'ACCEPTED')" +
     (maxPricePerKm != null ? " AND price_per_km <= ?" : "") +
     (customRepetition === true && repetitionMode == null
       ? " AND custom_repetition = TRUE"
@@ -338,7 +338,7 @@ function createCheckpointRequest(req, res) {
   // through frontend only which also relies on findRoute function which doesn't show accepted checkpoints
 
   const idroute = req.body.id_route;
-  const idpassenger = req.body.id_passenger;
+  const idpassenger = req.user.iduser;
   const pickupLatLng = req.body.pickup_latlng;
   const dropoffLatLng = req.body.dropoff_latlng;
 
@@ -540,7 +540,7 @@ function acceptCheckpointRequest(req, res) {
                   }
                 );
 
-                res.status(201).send({
+                res.status(200).send({
                   feedback: process.env.FEEDBACK_CHECKPOINT_ACCEPTED,
                 });
 
@@ -636,7 +636,7 @@ function removeCheckpoint(req, res) {
             );
             // sendRemovedCheckpoint(checkInfoResult[0].idpassenger, checkInfoResult[0].name);
 
-            res.status(201).send({
+            res.status(200).send({
               feedback: process.env.FEEDBACK_CHECKPOINT_REMOVED,
             });
 
@@ -689,7 +689,6 @@ function unsubscribeCheckpoint(req, res) {
         checkInfoResult[0].idpassenger == null
       ) {
         // Checkpoint ID does not exist
-
         return res.status(404).send({
           feedback: process.env.FEEDBACK_CHECKPOINT_DOESNT_EXIST,
         });
@@ -731,7 +730,7 @@ function unsubscribeCheckpoint(req, res) {
             );
             // sendUnsubscribedCheckpoint(checkInfoResult[0].idowner, checkInfoResult[0].name);
 
-            res.status(201).send({
+            res.status(200).send({
               feedback: process.env.FEEDBACK_CHECKPOINT_UNSUBSCRIBED,
             });
 
@@ -745,12 +744,22 @@ function unsubscribeCheckpoint(req, res) {
 
 // Retreives list of routes subscribed (accepted checkpoint) to for user req.user.iduser
 function getSubscribedToRoutes(req, res) {
-  const userID = req.body.user_id; //= req.user.iduser;
+  const userID = req.user.iduser;
+
+  // All values need to be defined
+  if (userID == null) {
+    res.status(400).send({
+      feedback: process.env.FEEDBACK_INVALID_REQUEST,
+    });
+
+    return;
+  }
+
   var resultingRoutes = [];
   var resultingRoutesSize = 0;
 
   const selectSubscribedRoutesQry =
-    "SELECT DISTINCT route.idroute, idowner, first_name, last_name, profile_picture, start_latlng, finish_latlng, name, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON route.idroute = checkpoint.idroute WHERE idpassenger = ?";
+    "SELECT DISTINCT route.idroute, idowner, first_name AS owner_first_name, last_name AS owner_last_name, profile_picture AS owner_profile_picture, start_latlng, finish_latlng, name, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km, idcheckpoint FROM route LEFT JOIN user ON user.iduser = route.idowner LEFT JOIN checkpoint ON route.idroute = checkpoint.idroute WHERE idpassenger = ? AND status = 'ACCEPTED'";
   db.query(
     selectSubscribedRoutesQry,
     [userID],
@@ -800,7 +809,7 @@ function getSubscribedToRoutes(req, res) {
 
           if (resultingRoutesSize <= resultingRoutes.length) {
             // We supplemented all the routes the user is subscribed to
-            res.status(201).send({
+            res.status(200).send({
               result: resultingRoutes,
             });
 
@@ -814,12 +823,22 @@ function getSubscribedToRoutes(req, res) {
 
 // Retreives list of created routes of user req.user.iduser
 function getMyRoutes(req, res) {
-  const userID = req.body.user_id; //= req.user.iduser;
+  const userID = req.user.iduser;
+
+  // All values need to be defined
+  if (userID == null) {
+    res.status(400).send({
+      feedback: process.env.FEEDBACK_INVALID_REQUEST,
+    });
+
+    return;
+  }
+
   var resultingRoutes = [];
   var resultingRoutesSize = 0;
 
   const selectMyRoutesQry =
-    "SELECT DISTINCT idroute, idowner, first_name, last_name, profile_picture, name, start_latlng, finish_latlng, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner WHERE idowner = ?";
+    "SELECT DISTINCT idroute, idowner, first_name AS owner_first_name, last_name AS owner_last_name, profile_picture AS owner_profile_picture, name, start_latlng, finish_latlng, route.created_at, custom_repetition, repetition_mode, start_day_of_month, start_hour_of_day, start_minute_of_hour, note, price_per_km FROM route LEFT JOIN user ON user.iduser = route.idowner WHERE idowner = ?";
   db.query(
     selectMyRoutesQry,
     [userID],
@@ -868,7 +887,7 @@ function getMyRoutes(req, res) {
 
           if (resultingRoutesSize <= resultingRoutes.length) {
             // We supplemented all the routes the user is subscribed to
-            res.status(201).send({
+            res.status(200).send({
               result: resultingRoutes,
             });
 
@@ -878,6 +897,55 @@ function getMyRoutes(req, res) {
       });
     }
   );
+}
+
+// Retreives list of requested checkpoints for route req.body.route_id
+function getRequestedCheckpoints(req, res) {
+  const routeID = req.body.route_id;
+  const userID = req.user.iduser;
+
+  // All values need to be defined
+  if (routeID == null || userID == null) {
+    res.status(400).send({
+      feedback: process.env.FEEDBACK_INVALID_REQUEST,
+    });
+
+    return;
+  }
+
+  const selectRequests =
+    "SELECT idcheckpoint, idowner, first_name, last_name, profile_picture, pickup_latlng, dropoff_latlng FROM checkpoint LEFT JOIN user ON user.iduser = checkpoint.idpassenger LEFT JOIN route ON route.idroute = checkpoint.idroute WHERE checkpoint.idroute = ? AND status = 'REQUESTED'";
+  db.query(selectRequests, [routeID], (error, result) => {
+    if (error || result == null) {
+      // Database error, response: feedback + HTTP500
+
+      res.status(500).send({
+        feedback: process.env.FEEDBACK_DATABASE_ERROR,
+      });
+
+      console.log(error);
+
+      return;
+    }
+
+    if (result.length <= 0) {
+      // No requests for route routeID
+      return res.status(200).send({
+        requested_checkpoints: result,
+        feedback: process.env.FEEDBACK_NO_REQUESTS,
+      });
+    }
+
+    if (result[0].idowner != userID) {
+      // User is trying to delete someone else's checkpoint
+      return res.sendStatus(403);
+    }
+
+    res.status(200).send({
+      requested_checkpoints: result,
+      feedback: process.env.FEEDBACK_REQUESTS_FOUND,
+    });
+  });
 }
 
 // Supplements existing routeInfo with passengers data and directions
@@ -981,4 +1049,5 @@ module.exports = {
   unsubscribeCheckpoint,
   getSubscribedToRoutes,
   getMyRoutes,
+  getRequestedCheckpoints,
 };

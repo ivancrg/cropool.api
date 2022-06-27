@@ -382,7 +382,7 @@ app.get(
   tokenMgmt.authenticateFirebaseToken,
   (req, res) => {
     sqlSelectAccountInfo =
-      "SELECT first_name, last_name, created_at, profile_picture FROM user WHERE iduser = ? AND e_mail = ?";
+      "SELECT first_name, last_name, user.created_at, profile_picture, COUNT(*) AS number_of_routes FROM user LEFT JOIN route ON route.idowner = user.iduser WHERE iduser = ? AND e_mail = ?";
 
     db.query(
       sqlSelectAccountInfo,
@@ -397,11 +397,12 @@ app.get(
         } else if (result[0]) {
           // User found, respond with his info
 
-          res.status(201).send({
+          res.status(200).send({
             first_name: result[0].first_name,
             last_name: result[0].last_name,
             created_at: result[0].created_at,
             profile_picture: result[0].profile_picture,
+            number_of_routes: result[0].number_of_routes,
           });
         }
       }
@@ -505,38 +506,40 @@ app.patch(
   }
 );
 
-app.post("/addRoute", (req, res) => {
+app.post("/addRoute", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.addRoute(req, res);
 });
 
-app.post("/findRoute", (req, res) => {
+app.post("/findRoute", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.findRoute(req, res);
 });
 
-app.post("/requestCheckpoint", (req, res) => {
+app.post("/requestCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.createCheckpointRequest(req, res);
 });
 
-app.patch("/acceptCheckpoint", (req, res) => {
+app.patch("/acceptCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.acceptCheckpointRequest(req, res);
 });
 
-app.patch("/removeCheckpoint", (req, res) => {
+app.patch("/removeCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.removeCheckpoint(req, res);
 });
 
-app.patch("/unsubscribeCheckpoint", (req, res) => {
+app.patch("/unsubscribeCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.unsubscribeCheckpoint(req, res);
 });
 
-// CHANGE TO GET WITH ACCESS TOKEN
-app.post("/subscribedToRoutes", (req, res) => {
+app.get("/subscribedToRoutes", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.getSubscribedToRoutes(req, res);
 });
 
-// CHANGE TO GET WITH ACCESS TOKEN
-app.post("/myRoutes", (req, res) => {
+app.get("/myRoutes", tokenMgmt.authenticateAccessToken, (req, res) => {
   routeMgmt.getMyRoutes(req, res);
+});
+
+app.post("/requestedCheckpoints", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.getRequestedCheckpoints(req, res);
 });
 
 app.listen(process.env.PORT || PORT, () => {
