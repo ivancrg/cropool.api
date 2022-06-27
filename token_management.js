@@ -15,14 +15,14 @@ const db = mysql.createPool({
   multipleStatements: true,
 });
 
-function generateAccessJWT(email) {
-  return jwt.sign({ e_mail: email }, process.env.ACCESS_TOKEN_SECRET, {
+function generateAccessJWT(iduser, email) {
+  return jwt.sign({ iduser: iduser, e_mail: email }, process.env.ACCESS_TOKEN_SECRET, {
     expiresIn: "5m",
   });
 }
 
-function generateRefreshJWT(email) {
-  return jwt.sign({ e_mail: email }, process.env.REFRESH_TOKEN_SECRET, {
+function generateRefreshJWT(iduser, email) {
+  return jwt.sign({ iduser: iduser, e_mail: email }, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: "7d",
   });
 }
