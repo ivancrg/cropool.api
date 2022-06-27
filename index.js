@@ -42,6 +42,7 @@ app.post("/register", (req, res) => {
   const last_name = req.body.last_name;
   const e_mail = req.body.e_mail;
   const password_hash = req.body.password;
+  const registration_id = req.body.registration_id;
 
   const sqlSelect = "SELECT * FROM user WHERE e_mail = ?";
 
@@ -68,7 +69,7 @@ app.post("/register", (req, res) => {
       // User not found, no error in sqlSelect query
 
       const sqlInsert =
-        "INSERT INTO user (first_name, last_name, e_mail, password, created_at, last_logout) VALUES (?, ?, ?, ?, ?, ?)";
+        "INSERT INTO user (first_name, last_name, e_mail, password, created_at, last_logout, registration_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
       currentTimeSeconds = Math.round(Date.now() / 1000);
 
       db.query(
@@ -80,6 +81,7 @@ app.post("/register", (req, res) => {
           password_hash,
           currentTimeSeconds,
           currentTimeSeconds,
+          registration_id,
         ],
         (err, result) => {
           if (err) {
@@ -504,6 +506,13 @@ app.patch(
       }
     });
   }
+);
+
+app.patch(
+  "/updateRegistrationToken", 
+  tokenMgmt.authenticateAccessToken,
+  tokenMgmt.authenticateFirebaseToken,
+  (req, res) => {tokenMgmt.updateRegToken(req, res, dbFB);}
 );
 
 app.post("/addRoute", tokenMgmt.authenticateAccessToken, (req, res) => {
