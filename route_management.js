@@ -2,6 +2,7 @@ const { query } = require("express");
 const mysql = require("mysql");
 require("dotenv").config();
 const map_util = require("./map_utility");
+const token_notif_mgmt = require("./token_management");
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -136,7 +137,7 @@ function findRoute(req, res) {
   const startMinuteOfHour = req.body.start_minute_of_hour;
   const pickupSecondsTolerance =
     req.body.pickup_timestamp_tolerance != null
-      ? req.body.pickup_timestamp_tolerance
+      ? req.body.pickup_timestamp_tolerance * 60
       : process.env.PICKUP_SECONDS_TOLERANCE;
 
   if (
@@ -219,6 +220,7 @@ function findRoute(req, res) {
 
         return;
       } else {
+        // console.log("SELECTPRTS", selectModePriceTS,selectModePriceTSArray, selectModePriceTSRes);
         // Convert to objects
         selectModePriceTSRes = Object.values(
           JSON.parse(JSON.stringify(selectModePriceTSRes))
@@ -287,7 +289,7 @@ function repetitionTimeQuery(
       "repetition_mode = ? AND ABS((start_hour_of_day * 60 + start_minute_of_hour) - ?) <= ?";
     qryArray = [
       repetitionMode,
-      startHourOfDay * 60 + startMinuteOfHour,
+      startHourOfDay * 3600 + startMinuteOfHour * 60,
       pickupSecondsTolerance,
     ];
   } else if (repetitionMode == process.env.REPETITION_MONTHLY) {
@@ -363,46 +365,63 @@ function createCheckpointRequest(req, res) {
       }
 
       // Passenger isn't the route's owner so we can proceed with adding request/sending notification
-
-      // Status' default value is REQUESTED so we don't need to explicitly add it
-      insertCheckpointQuery =
-        "INSERT INTO checkpoint (idroute, idpassenger, pickup_latlng, dropoff_latlng) VALUES (?, ?, ?, ?)";
-
+      const selectPassengerInfo =
+        "SELECT first_name, last_name FROM user WHERE iduser = ?";
+      var passengerName, passengerSurname;
       db.query(
-        insertCheckpointQuery,
-        [idroute, idpassenger, pickupLatLng, dropoffLatLng],
-        (errInsert, resultInsert) => {
-          if (errInsert) {
-            // Database error, response: feedback + HTTP500
-
-            res.status(500).send({
-              feedback: process.env.FEEDBACK_DATABASE_ERROR,
-            });
-
-            console.log(errInsert);
-
-            return;
+        selectPassengerInfo,
+        [idpassenger],
+        (passengerInfoError, passengerInfoResult) => {
+          if (
+            passengerInfoError ||
+            passengerInfoResult == null ||
+            passengerInfoResult.length <= 0
+          ) {
+            passengerName = passengerSurname = "N/A";
           } else {
-            // Checkpoint created created, response: send a notification to checkpoint route's creator, feedback + HTTP201
-
-            // Send the owner a notification
-            // Send notification to user result[0].idowner saying that user idpassenger
-            // sent a request to connect to his route result[0].name
-            console.log(
-              "NOTIFICATION TO:",
-              result[0].idowner,
-              idpassenger,
-              "wants to connect to your route",
-              result[0].name
-            );
-            // sendCheckpointRequestNotif(result[0].idowner, idpassenger, result[0].name);
-
-            res.status(201).send({
-              feedback: process.env.FEEDBACK_CHECKPOINT_CREATED,
-            });
-
-            return;
+            passengerName = passengerInfoResult[0].first_name;
+            passengerSurname = passengerInfoResult[0].last_name;
           }
+
+          // Status' default value is REQUESTED so we don't need to explicitly add it
+          insertCheckpointQuery =
+            "INSERT INTO checkpoint (idroute, idpassenger, pickup_latlng, dropoff_latlng) VALUES (?, ?, ?, ?)";
+
+          db.query(
+            insertCheckpointQuery,
+            [idroute, idpassenger, pickupLatLng, dropoffLatLng],
+            (errInsert, resultInsert) => {
+              if (errInsert) {
+                // Database error, response: feedback + HTTP500
+
+                res.status(500).send({
+                  feedback: process.env.FEEDBACK_DATABASE_ERROR,
+                });
+
+                console.log(errInsert);
+
+                return;
+              } else {
+                // Checkpoint created created, response: send a notification to checkpoint route's creator, feedback + HTTP201
+
+                // Send the owner a notification
+                // Send notification to user result[0].idowner saying that user idpassenger
+                // sent a request to connect to his route result[0].name
+
+                token_notif_mgmt.sendNotification(
+                  result[0].idowner,
+                  result[0].name,
+                  passengerName + " " + passengerSurname + " wants to connect."
+                );
+
+                res.status(201).send({
+                  feedback: process.env.FEEDBACK_CHECKPOINT_CREATED,
+                });
+
+                return;
+              }
+            }
+          );
         }
       );
     }
@@ -517,6 +536,7 @@ function acceptCheckpointRequest(req, res) {
                 // Query to find the passenger ID
                 const passengerIDQry =
                   "SELECT idpassenger FROM checkpoint WHERE idcheckpoint = ?";
+
                 db.query(
                   passengerIDQry,
                   [checkpointID],
@@ -528,14 +548,12 @@ function acceptCheckpointRequest(req, res) {
                       // Send the passenger a notification
                       // Send notification to user idpassenger saying that his request
                       // to connect to route name was accepted
-                      console.log(
-                        "NOTIFICATION TO:",
+
+                      token_notif_mgmt.sendNotification(
                         passengerIDResult[0].idpassenger,
-                        "Your checkpoint request to route",
-                        infoResult[0].name,
-                        "was accepted."
+                        "Route " + infoResult[0].name,
+                        "Subscription request accepted"
                       );
-                      // sendCheckpointAcceptedNotif(checkNumberResult[0].idpassenger, checkNumberResult[0].name);
                     }
                   }
                 );
@@ -627,13 +645,13 @@ function removeCheckpoint(req, res) {
             // Send the passenger a notification
             // Send notification to user idpassenger saying that his
             // connection/request for a connection to route name was declined
-            console.log(
-              "NOTIFICATION TO:",
+
+            token_notif_mgmt.sendNotification(
               checkInfoResult[0].idpassenger,
-              "Your existing or pending checkpoint in route",
-              checkInfoResult[0].name,
-              "was removed."
+              "Route " + checkInfoResult[0].name,
+              "Subscription removed or declined"
             );
+
             // sendRemovedCheckpoint(checkInfoResult[0].idpassenger, checkInfoResult[0].name);
 
             res.status(200).send({
@@ -700,42 +718,63 @@ function unsubscribeCheckpoint(req, res) {
       }
 
       // User deleting his own route checkpoint
-      // Can delete the request and insert it into checkpoint_removed table
-      const moveCheckpointQry =
-        "INSERT INTO checkpoint_removed SELECT * FROM checkpoint WHERE idcheckpoint = ?; DELETE FROM checkpoint WHERE idcheckpoint = ?;";
+      const selectPassengerName =
+        "SELECT first_name, last_name FROM user WHERE iduser = ?";
+      var passengerName, passengerSurname;
       db.query(
-        moveCheckpointQry,
-        [checkpointID, checkpointID],
-        (moveCheckpointError, moveCheckpointResult) => {
-          if (moveCheckpointError) {
-            // Database error, response: feedback + HTTP500
-
-            res.status(500).send({
-              feedback: process.env.FEEDBACK_DATABASE_ERROR,
-            });
-
-            console.log(moveCheckpointError);
-
-            return;
+        selectPassengerName,
+        [userID],
+        (passengerNameError, passengerNameResponse) => {
+          if (
+            passengerNameError ||
+            passengerNameResponse == null ||
+            passengerNameResponse.length <= 0
+          ) {
+            passengerName = passengerSurname = "N/A";
           } else {
-            // Send the owner a notification
-            // Send notification to user idowner saying that his
-            // route name lost a passenger/request
-            console.log(
-              "NOTIFICATION TO:",
-              checkInfoResult[0].idowner,
-              "Your existing or pending passenger in route",
-              checkInfoResult[0].name,
-              "was removed."
-            );
-            // sendUnsubscribedCheckpoint(checkInfoResult[0].idowner, checkInfoResult[0].name);
-
-            res.status(200).send({
-              feedback: process.env.FEEDBACK_CHECKPOINT_UNSUBSCRIBED,
-            });
-
-            return;
+            passengerName = passengerNameResponse[0].first_name;
+            passengerSurname = passengerNameResponse[0].last_name;
           }
+
+          // Can delete the request and insert it into checkpoint_removed table
+          const moveCheckpointQry =
+            "INSERT INTO checkpoint_removed SELECT * FROM checkpoint WHERE idcheckpoint = ?; DELETE FROM checkpoint WHERE idcheckpoint = ?;";
+          db.query(
+            moveCheckpointQry,
+            [checkpointID, checkpointID],
+            (moveCheckpointError, moveCheckpointResult) => {
+              if (moveCheckpointError) {
+                // Database error, response: feedback + HTTP500
+
+                res.status(500).send({
+                  feedback: process.env.FEEDBACK_DATABASE_ERROR,
+                });
+
+                console.log(moveCheckpointError);
+
+                return;
+              } else {
+                // Send the owner a notification
+                // Send notification to user idowner saying that his
+                // route name lost a passenger/request
+
+                token_notif_mgmt.sendNotification(
+                  checkInfoResult[0].idowner,
+                  "Route " + checkInfoResult[0].name,
+                  passengerName +
+                    " " +
+                    passengerSurname +
+                    " revoked request or unsubscribed."
+                );
+
+                res.status(200).send({
+                  feedback: process.env.FEEDBACK_CHECKPOINT_UNSUBSCRIBED,
+                });
+
+                return;
+              }
+            }
+          );
         }
       );
     }
@@ -789,7 +828,7 @@ function getSubscribedToRoutes(req, res) {
       if (resultingRoutesSize == 0) {
         // No such routes found
         // console.log("NOROUTES");
-        res.status(201).send({
+        res.status(200).send({
           result: resultingRoutes,
         });
         return;
@@ -867,7 +906,7 @@ function getMyRoutes(req, res) {
 
       if (resultingRoutesSize == 0) {
         // No such routes found
-        res.status(201).send({
+        res.status(200).send({
           result: resultingRoutes,
         });
         return;

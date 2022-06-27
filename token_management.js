@@ -16,15 +16,23 @@ const db = mysql.createPool({
 });
 
 function generateAccessJWT(iduser, email) {
-  return jwt.sign({ iduser: iduser, e_mail: email }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: "5m",
-  });
+  return jwt.sign(
+    { iduser: iduser, e_mail: email },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: "5m",
+    }
+  );
 }
 
 function generateRefreshJWT(iduser, email) {
-  return jwt.sign({ iduser: iduser, e_mail: email }, process.env.REFRESH_TOKEN_SECRET, {
-    expiresIn: "7d",
-  });
+  return jwt.sign(
+    { iduser: iduser, e_mail: email },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: "7d",
+    }
+  );
 }
 
 function registerUserGenerateFirebaseJWT(iduser, email, displayName, callback) {
@@ -121,11 +129,11 @@ function authenticateToken(tokenName, req, res, next) {
 }
 
 function authenticateAccessToken(req, res, next) {
-    authenticateToken("access_token", req, res, next);
+  authenticateToken("access_token", req, res, next);
 }
 
 function authenticateRefreshToken(req, res, next) {
-    authenticateToken("refresh_token", req, res, next);
+  authenticateToken("refresh_token", req, res, next);
 }
 
 function authenticateFirebaseToken(req, res, next) {
@@ -192,6 +200,89 @@ function authenticateFirebaseToken(req, res, next) {
   );
 }
 
+function updateRegToken(req, res, dbFB) {
+  const registration_id = req.body.registration_id;
+
+  var sqlUpdate = "";
+  const updateArray = [];
+
+  if (registration_id != null) {
+    sqlUpdate = "UPDATE user SET registration_id = ? WHERE e_mail = ?";
+    updateArray.push(registration_id);
+    updateArray.push(req.user.e_mail);
+  } else {
+    // All values are null
+    return res.statusCode(400);
+  }
+
+  updateArray.push(req.user.e_mail);
+
+  db.query(sqlUpdate, updateArray, (err, result) => {
+    if (err) {
+      // Database error, response: feedback + HTTP500
+
+      res.status(500).send({
+        feedback: process.env.FEEDBACK_DATABASE_ERROR,
+      });
+
+      return;
+    } else {
+      // User's name updated, response: feedback + HTTP201
+
+      // Updating user's name in user table record in FB RTDB
+      if (registration_id != null) {
+        dbFB
+          .ref(process.env.FB_RTDB_USER_TABLE_NAME)
+          .child(req.user.uid)
+          .update({
+            registration_id: req.body.registration_id,
+          });
+      }
+
+      res.status(201).send({
+        feedback: process.env.FEEDBACK_USER_INFO_UPDATED,
+      });
+    }
+  });
+}
+
+function sendNotification(toID, title, body) {
+  if (toID == null || title == null || body == null) {
+    return;
+  }
+
+  selectRegistrationToken = "SELECT registration_id FROM user WHERE iduser = ?";
+  db.query(selectRegistrationToken, [toID], (error, result) => {
+    if (error || result == null || result.length <= 0) {
+      console.log(error, result);
+      return;
+    }
+
+    const topic = "notifications";
+    const registrationToken = result[0].registration_id.toString();
+    // console.log(registrationToken, topic, title, body);
+
+    var message = {
+      data: {
+        title: title,
+        body: body,
+      },
+      token: registrationToken,
+    };
+
+    admin
+      .messaging()
+      .send(message)
+      .then((response) => {
+        // console.log("Successfully sent message:", response);
+      })
+      .catch((error) => {
+        console.log("Error sending message to ", toID, title, body);
+        console.log(error);
+      });
+  });
+}
+
 module.exports = {
   generateAccessJWT,
   generateRefreshJWT,
@@ -200,4 +291,6 @@ module.exports = {
   authenticateAccessToken,
   authenticateRefreshToken,
   authenticateFirebaseToken,
+  updateRegToken,
+  sendNotification,
 };
