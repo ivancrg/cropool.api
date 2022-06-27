@@ -5,6 +5,7 @@ const cors = require("cors");
 const mysql = require("mysql");
 require("dotenv").config();
 const bcrypt = require("bcrypt");
+const routeMgmt = require("./route_management");
 const tokenMgmt = require("./token_management");
 const { getDatabase } = require("firebase-admin/database");
 
@@ -102,11 +103,11 @@ app.post("/register", (req, res) => {
                 res
                   .setHeader(
                     "access_token",
-                    tokenMgmt.generateAccessJWT(e_mail)
+                    tokenMgmt.generateAccessJWT(result.insertId, e_mail)
                   )
                   .setHeader(
                     "refresh_token",
-                    tokenMgmt.generateRefreshJWT(e_mail)
+                    tokenMgmt.generateRefreshJWT(result.insertId, e_mail)
                   )
                   .setHeader("firebase_token", firebaseToken)
                   .status(201)
@@ -161,11 +162,17 @@ app.post("/login", (req, res) => {
                   res
                     .setHeader(
                       "access_token",
-                      tokenMgmt.generateAccessJWT(e_mail)
+                      tokenMgmt.generateAccessJWT(
+                        resultSelect[0].iduser,
+                        e_mail
+                      )
                     )
                     .setHeader(
                       "refresh_token",
-                      tokenMgmt.generateRefreshJWT(e_mail)
+                      tokenMgmt.generateRefreshJWT(
+                        resultSelect[0].iduser,
+                        e_mail
+                      )
                     )
                     .setHeader("firebase_token", firebaseToken)
                     .status(201)
@@ -235,8 +242,7 @@ app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
 
               if (
                 logoutRequired != null &&
-                (logoutRequired == true ||
-                  logoutRequired.toString() == "true")
+                (logoutRequired == true || logoutRequired.toString() == "true")
               ) {
                 // Logout is required
                 sqlUpdatePassword =
@@ -350,7 +356,7 @@ app.get("/tokens", tokenMgmt.authenticateRefreshToken, (req, res) => {
         res
           .setHeader(
             "access_token",
-            tokenMgmt.generateAccessJWT(req.user.e_mail)
+            tokenMgmt.generateAccessJWT(result[0].iduser, req.user.e_mail)
           )
           .setHeader("firebase_token", firebaseToken)
           .status(201)
@@ -376,7 +382,7 @@ app.get(
   tokenMgmt.authenticateFirebaseToken,
   (req, res) => {
     sqlSelectAccountInfo =
-      "SELECT first_name, last_name, created_at, profile_picture FROM user WHERE iduser = ? AND e_mail = ?";
+      "SELECT first_name, last_name, user.created_at, profile_picture, COUNT(*) AS number_of_routes FROM user LEFT JOIN route ON route.idowner = user.iduser WHERE iduser = ? AND e_mail = ?";
 
     db.query(
       sqlSelectAccountInfo,
@@ -391,11 +397,12 @@ app.get(
         } else if (result[0]) {
           // User found, respond with his info
 
-          res.status(201).send({
+          res.status(200).send({
             first_name: result[0].first_name,
             last_name: result[0].last_name,
             created_at: result[0].created_at,
             profile_picture: result[0].profile_picture,
+            number_of_routes: result[0].number_of_routes,
           });
         }
       }
@@ -498,6 +505,42 @@ app.patch(
     });
   }
 );
+
+app.post("/addRoute", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.addRoute(req, res);
+});
+
+app.post("/findRoute", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.findRoute(req, res);
+});
+
+app.post("/requestCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.createCheckpointRequest(req, res);
+});
+
+app.patch("/acceptCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.acceptCheckpointRequest(req, res);
+});
+
+app.patch("/removeCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.removeCheckpoint(req, res);
+});
+
+app.patch("/unsubscribeCheckpoint", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.unsubscribeCheckpoint(req, res);
+});
+
+app.get("/subscribedToRoutes", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.getSubscribedToRoutes(req, res);
+});
+
+app.get("/myRoutes", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.getMyRoutes(req, res);
+});
+
+app.post("/requestedCheckpoints", tokenMgmt.authenticateAccessToken, (req, res) => {
+  routeMgmt.getRequestedCheckpoints(req, res);
+});
 
 app.listen(process.env.PORT || PORT, () => {
   console.log(`Running on port ${PORT}`);
