@@ -438,6 +438,7 @@ function acceptCheckpointRequest(req, res) {
 
   // All values need to be defined
   if (checkpointID == null || userID == null) {
+    console.log(checkpointID, userID);
     res.status(400).send({
       feedback: process.env.FEEDBACK_INVALID_REQUEST,
     });

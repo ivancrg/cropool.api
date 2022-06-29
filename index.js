@@ -313,11 +313,11 @@ app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
 app.patch("/logout", tokenMgmt.authenticateAccessToken, (req, res) => {
   const e_mail = req.user.e_mail;
 
-  const sqlUpdate = "UPDATE user SET last_logout = ? WHERE e_mail = ?";
+  const sqlUpdate = "UPDATE user SET last_logout = ?, registration_id = ? WHERE e_mail = ?";
 
   db.query(
     sqlUpdate,
-    [Math.round(Date.now() / 1000), e_mail],
+    [Math.round(Date.now() / 1000), "", e_mail],
     (err, result) => {
       if (err) {
         // Database error, response: feedback + HTTP500
