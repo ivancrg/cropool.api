@@ -96,6 +96,12 @@ app.post("/register", (req, res) => {
             return;
           } else {
             // User created, response: access_token, refresh_token, firebase_token, feedback + HTTP201
+            dbFB
+              .ref(process.env.FB_RTDB_USER_TABLE_NAME)
+              .child(result.insertId)
+              .update({
+                name: first_name + " " + last_name,
+              });
 
             tokenMgmt.registerUserGenerateFirebaseJWT(
               result.insertId,
@@ -313,7 +319,8 @@ app.patch("/changePassword", tokenMgmt.authenticateAccessToken, (req, res) => {
 app.patch("/logout", tokenMgmt.authenticateAccessToken, (req, res) => {
   const e_mail = req.user.e_mail;
 
-  const sqlUpdate = "UPDATE user SET last_logout = ?, registration_id = ? WHERE e_mail = ?";
+  const sqlUpdate =
+    "UPDATE user SET last_logout = ?, registration_id = ? WHERE e_mail = ?";
 
   db.query(
     sqlUpdate,
