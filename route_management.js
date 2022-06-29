@@ -286,7 +286,7 @@ function repetitionTimeQuery(
     // If repetition is daily, we need startHourOfDay, startMinuteOfHour and pickupSecondsTolerance
 
     qry =
-      "repetition_mode = ? AND ABS((start_hour_of_day * 60 + start_minute_of_hour) - ?) <= ?";
+      "repetition_mode = ? AND ABS((start_hour_of_day * 3600 + start_minute_of_hour * 60) - ?) <= ?";
     qryArray = [
       repetitionMode,
       startHourOfDay * 3600 + startMinuteOfHour * 60,
