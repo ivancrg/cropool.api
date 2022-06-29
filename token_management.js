@@ -89,7 +89,10 @@ function authenticateToken(tokenName, req, res, next) {
       : process.env.ACCESS_TOKEN_SECRET,
     (err, user) => {
       // Token invalid (it was modified), response: HTTP403
-      if (err) return res.sendStatus(403);
+      if (err) {
+        // console.log("ACCESS Token invalid (it was modified)");
+        return res.sendStatus(403);
+      }
 
       // Token VALID, it was issued to user 'user.e_mail'
 
@@ -108,16 +111,18 @@ function authenticateToken(tokenName, req, res, next) {
           // User found, check if the token is valid
 
           if (
-            result[0].last_logout < user.iat &&
-            result[0].created_at < user.iat
+            result[0].last_logout - user.iat <= 1 &&
+            result[0].created_at - user.iat <= 1
           ) {
             // Token issued after last logout and after user creation
-
+            // (1 second tolerance - there were some time sync problems, will be removed after the app is tested)
             req.user = user;
             next();
           } else {
             // Token issued before last logout - therefore invalid
-
+            // console.log(
+            //   "ACCESS Token issued before last logout - therefore invalid"
+            // );
             return res.status(403).send({
               feedback: process.env.TOKEN_INACTIVE,
             });
@@ -177,12 +182,15 @@ function authenticateFirebaseToken(req, res, next) {
 
           if (result[0].iduser != fbuser.uid) {
             // Firebase token does not belong to the user with access token
+            // console.log(
+            //   "Firebase token does not belong to the user with access token"
+            // );
             return res.status(403).send({
               feedback: process.env.TOKEN_INVALID,
             });
           } else if (
-            result[0].last_logout < fbuser.iat &&
-            result[0].created_at < fbuser.iat
+            result[0].last_logout - fbuser.iat <= 1 &&
+            result[0].created_at - fbuser.iat <= 1
           ) {
             // Token issued after last logout and after user creation
 
@@ -190,6 +198,7 @@ function authenticateFirebaseToken(req, res, next) {
             next();
           } else {
             // Token issued before last logout - therefore invalid
+            // console.log("Token issued before last logout - therefore invalid");
             return res.status(403).send({
               feedback: process.env.TOKEN_INACTIVE,
             });
